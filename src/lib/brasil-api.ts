@@ -13,9 +13,11 @@ export async function fetchCompanyByCNPJ(rawCnpj: string): Promise<{
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+    // Consulta através da rota interna do Next.js (Serverless Proxy)
+    // Isso evita bloqueios de CORS, adblockers e Cloudflare 403 no navegador
+    const response = await fetch(`/api/cnpj?cnpj=${cnpj}`, {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
@@ -24,20 +26,23 @@ export async function fetchCompanyByCNPJ(rawCnpj: string): Promise<{
 
     clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return { success: false, error: "CNPJ não encontrado na base da Receita Federal." };
-      }
-      return { success: false, error: `Falha na consulta da BrasilAPI (Código ${response.status}).` };
+    const json = await response.json();
+
+    if (!response.ok || !json.success) {
+      return {
+        success: false,
+        error: json.error || "Não foi possível carregar os dados cadastrais da empresa.",
+      };
     }
 
-    const data: BrasilAPICompanyResponse = await response.json();
-    return { success: true, data };
+    return {
+      success: true,
+      data: json.data as BrasilAPICompanyResponse,
+    };
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
-      return { success: false, error: "Tempo limite esgotado ao consultar a BrasilAPI." };
+      return { success: false, error: "Tempo limite esgotado ao consultar dados da Receita." };
     }
     return { success: false, error: "Não foi possível conectar ao serviço de consulta de CNPJ." };
   }
 }
-
