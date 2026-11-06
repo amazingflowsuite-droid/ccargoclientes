@@ -156,13 +156,36 @@ export default function RelatoriosPage() {
     return map;
   }, [accounts]);
 
+  function getAccountOperatorName(acc: Account): string {
+    return acc.sdr_responsavel_nome || acc.gerente_conta_nome || "Ana Paula (Comercial)";
+  }
+
+  function matchesClientSearch(acc: Account | undefined, rawTerm: string): boolean {
+    const term = rawTerm.trim().toLowerCase();
+    if (!term) return true;
+    if (!acc) return false;
+    const cleanTerm = cleanCNPJ(term);
+    return (
+      acc.razao_social.toLowerCase().includes(term) ||
+      Boolean(acc.nome_fantasia && acc.nome_fantasia.toLowerCase().includes(term)) ||
+      (cleanTerm.length > 0 && acc.cnpj.includes(cleanTerm)) ||
+      Boolean(
+        acc.observacoes_importantes &&
+          acc.observacoes_importantes.toLowerCase().includes(term)
+      )
+    );
+  }
+
   const filteredLogs = useMemo(() => {
     return logs
       .filter((log) => {
         if (!isInSelectedMonth(log.created_at)) return false;
         if (selectedOperator !== "TODOS") {
-          const op = (log.usuario_nome || "").toLowerCase();
+          const op = (log.usuario_nome || "Ana Paula (Comercial)").toLowerCase();
           if (!op.includes(selectedOperator.toLowerCase())) return false;
+        }
+        if (!matchesClientSearch(accountById[log.account_id], clientSearch)) {
+          return false;
         }
         return true;
       })
@@ -171,15 +194,22 @@ export default function RelatoriosPage() {
         account_name: accountById[log.account_id]?.razao_social || "Empresa Prospectada",
         account_cnpj: accountById[log.account_id]?.cnpj || "",
       }));
-  }, [logs, selectedMonth, selectedOperator, accountById]);
+  }, [logs, selectedMonth, selectedOperator, clientSearch, accountById]);
 
   const filteredAccounts = useMemo(() => {
-    const accountIdsWithLogsInMonth = new Set(filteredLogs.map((l) => l.account_id));
+    const accountIdsWithLogsInFilter = new Set(filteredLogs.map((l) => l.account_id));
 
     return accounts.filter((acc) => {
+      if (!matchesClientSearch(acc, clientSearch)) {
+        return false;
+      }
+
       if (selectedOperator !== "TODOS") {
-        const resp = (acc.sdr_responsavel_nome || acc.gerente_conta_nome || "").toLowerCase();
-        if (!resp.includes(selectedOperator.toLowerCase()) && !accountIdsWithLogsInMonth.has(acc.id)) {
+        const opFilter = selectedOperator.toLowerCase();
+        const sdr = (acc.sdr_responsavel_nome || "Ana Paula (Comercial)").toLowerCase();
+        const mgr = (acc.gerente_conta_nome || "").toLowerCase();
+        const isResponsible = sdr.includes(opFilter) || mgr.includes(opFilter);
+        if (!isResponsible && !accountIdsWithLogsInFilter.has(acc.id)) {
           return false;
         }
       }
@@ -188,18 +218,10 @@ export default function RelatoriosPage() {
         const inMonth =
           isInSelectedMonth(acc.created_at) ||
           isInSelectedMonth(acc.updated_at) ||
-          accountIdsWithLogsInMonth.has(acc.id);
+          isInSelectedMonth(acc.fechado_em) ||
+          Object.values(acc.stage_history || {}).some((dt) => isInSelectedMonth(dt)) ||
+          accountIdsWithLogsInFilter.has(acc.id);
         if (!inMonth) return false;
-      }
-
-      if (clientSearch.trim()) {
-        const term = clientSearch.toLowerCase();
-        const matchName =
-          acc.razao_social.toLowerCase().includes(term) ||
-          (acc.nome_fantasia && acc.nome_fantasia.toLowerCase().includes(term)) ||
-          acc.cnpj.includes(cleanCNPJ(term)) ||
-          (acc.observacoes_importantes && acc.observacoes_importantes.toLowerCase().includes(term));
-        if (!matchName) return false;
       }
 
       return true;
@@ -245,18 +267,23 @@ export default function RelatoriosPage() {
     const operatorNames = Array.from(
       new Set([
         ...operators.map((o) => o.nome),
-        ...accounts.map((a) => a.sdr_responsavel_nome || "Ana Paula (Comercial)"),
+        ...accounts.map((a) => getAccountOperatorName(a)),
         ...logs.map((l) => l.usuario_nome || "Ana Paula (Comercial)"),
       ])
     ).filter(Boolean);
 
-    const rows = operatorNames.map((opName) => {
+    const allRows = operatorNames.map((opName) => {
+      const opLower = opName.toLowerCase();
       const opLogs = filteredLogs.filter(
-        (l) => (l.usuario_nome || "").toLowerCase() === opName.toLowerCase()
+        (l) => (l.usuario_nome || "Ana Paula (Comercial)").toLowerCase() === opLower
       );
-      const opAccounts = filteredAccounts.filter(
-        (a) => (a.sdr_responsavel_nome || "").toLowerCase() === opName.toLowerCase()
-      );
+      const opLogAccountIds = new Set(opLogs.map((l) => l.account_id));
+
+      const opAccounts = filteredAccounts.filter((a) => {
+        const sdr = (a.sdr_responsavel_nome || "Ana Paula (Comercial)").toLowerCase();
+        const mgr = (a.gerente_conta_nome || "").toLowerCase();
+        return sdr === opLower || mgr === opLower || opLogAccountIds.has(a.id);
+      });
 
       const totalCalls = opLogs.length;
       const successCalls = opLogs.filter((l) => l.resultado === "sucesso").length;
@@ -287,7 +314,15 @@ export default function RelatoriosPage() {
       };
     });
 
-    // Filtra operadores relevantes ou exibe todos
+    // Opção A: Se um operador está selecionado no filtro, exibe apenas ele.
+    // Quando em "TODOS", exibe apenas operadores que possuem empresas ou contatos no filtro ativo.
+    const rows = allRows.filter((r) => {
+      if (selectedOperator !== "TODOS") {
+        return r.nome.toLowerCase().includes(selectedOperator.toLowerCase());
+      }
+      return r.totalCalls > 0 || r.leadsTrabalhados > 0;
+    });
+
     const maxCalls = Math.max(1, ...rows.map((r) => r.totalCalls));
     const maxLeads = Math.max(1, ...rows.map((r) => r.leadsTrabalhados));
 
@@ -307,7 +342,7 @@ export default function RelatoriosPage() {
       channelCounts,
       totalChannel,
     };
-  }, [operators, accounts, logs, filteredLogs, filteredAccounts]);
+  }, [operators, accounts, logs, filteredLogs, filteredAccounts, selectedOperator]);
 
   // ==========================================================================
   // US-18: CÁLCULO DE LEAD TIME & CYCLE TIME ABRANGENDO AS COLUNAS DO WORKFLOW
@@ -341,9 +376,11 @@ export default function RelatoriosPage() {
       const isClosedWon = acc.estagio === "fechado_ganho" || acc.status === "cliente_ativo";
       const endMs = isClosedWon
         ? new Date(acc.fechado_em || hist.fechado_ganho || acc.updated_at).getTime()
+        : acc.status === "desqualificado" && acc.data_desqualificacao
+        ? new Date(acc.data_desqualificacao).getTime()
         : Date.now();
 
-      const totalLeadTimeDays = Math.max(0.5, Number(((endMs - startMs) / DAY_MS).toFixed(1)));
+      const totalLeadTimeDays = Math.max(0.5, Number(((Math.max(startMs, endMs) - startMs) / DAY_MS).toFixed(1)));
       if (isClosedWon) {
         closedLeadTimesDays.push(totalLeadTimeDays);
       } else if (acc.status === "lead") {
@@ -363,7 +400,7 @@ export default function RelatoriosPage() {
           perStageDays[currKey] = d;
           stageDurationsDays[currKey].push(d);
         } else if (tStart && acc.estagio === currKey) {
-          const d = Math.max(0.5, Number(((Date.now() - tStart) / DAY_MS).toFixed(1)));
+          const d = Math.max(0.5, Number(((Math.max(tStart, endMs) - tStart) / DAY_MS).toFixed(1)));
           perStageDays[currKey] = d;
           stageDurationsDays[currKey].push(d);
         }
@@ -377,14 +414,12 @@ export default function RelatoriosPage() {
       };
     });
 
-    const columnsCycleTime = WORKFLOW_COLUMNS.map((col, idx) => {
+    const columnsCycleTime = WORKFLOW_COLUMNS.map((col) => {
       const samples = stageDurationsDays[col.key] || [];
       const avgDays =
         samples.length > 0
           ? Number((samples.reduce((a, b) => a + b, 0) / samples.length).toFixed(1))
-          : col.key === "fechado_ganho"
-          ? 0
-          : Number((1.5 + idx * 0.4).toFixed(1));
+          : 0;
 
       const countInStage = filteredAccounts.filter(
         (a) =>
@@ -401,19 +436,12 @@ export default function RelatoriosPage() {
       };
     });
 
-    const avgClosedLeadTime =
-      closedLeadTimesDays.length > 0
-        ? Number(
-            (
-              closedLeadTimesDays.reduce((a, b) => a + b, 0) / closedLeadTimesDays.length
-            ).toFixed(1)
-          )
-        : Number(
-            columnsCycleTime
-              .slice(0, 5)
-              .reduce((acc, c) => acc + c.avgDays, 0)
-              .toFixed(1)
-          );
+    const cycleSum = Number(
+      columnsCycleTime
+        .slice(0, 5)
+        .reduce((acc, c) => acc + c.avgDays, 0)
+        .toFixed(1)
+    );
 
     const avgOpenLeadTime =
       openLeadTimesDays.length > 0
@@ -422,17 +450,27 @@ export default function RelatoriosPage() {
           )
         : 0;
 
-    const totalCycleSum = Math.max(
-      0.1,
-      columnsCycleTime.slice(0, 5).reduce((sum, c) => sum + c.avgDays, 0)
-    );
+    // Opção A: Usa a média real dos negócios ganhos no filtro; se não houver fechamentos no filtro,
+    // exibe a soma real do tempo acumulado das etapas percorridas pelos leads filtrados.
+    const avgClosedLeadTime =
+      closedLeadTimesDays.length > 0
+        ? Number(
+            (
+              closedLeadTimesDays.reduce((a, b) => a + b, 0) / closedLeadTimesDays.length
+            ).toFixed(1)
+          )
+        : cycleSum > 0
+        ? cycleSum
+        : avgOpenLeadTime;
 
-    // Identifica a etapa gargalo (maior Cycle Time entre as colunas 1 a 5)
-    const activeColumns = columnsCycleTime.slice(0, 5);
-    const bottleneckColumn = activeColumns.reduce(
-      (max, c) => (c.avgDays > max.avgDays ? c : max),
-      activeColumns[0]
-    );
+    const totalCycleSum = cycleSum;
+
+    // Identifica a etapa gargalo real (maior Cycle Time > 0 entre as colunas 1 a 5 no filtro)
+    const activeColumns = columnsCycleTime.slice(0, 5).filter((c) => c.avgDays > 0);
+    const bottleneckColumn =
+      activeColumns.length > 0
+        ? activeColumns.reduce((max, c) => (c.avgDays > max.avgDays ? c : max), activeColumns[0])
+        : null;
 
     return {
       columnsCycleTime,
@@ -634,7 +672,10 @@ export default function RelatoriosPage() {
             {workflowTiming.avgClosedLeadTime} <span className="text-sm font-sans font-semibold text-[#57534E]">dias</span>
           </div>
           <div className="text-[11px] text-[#57534E] mt-1">
-            Gargalo atual: <strong className="text-amber-800">{workflowTiming.bottleneckColumn?.shortTitle}</strong>
+            Gargalo atual:{" "}
+            <strong className="text-amber-800">
+              {workflowTiming.bottleneckColumn?.shortTitle || "Sem gargalo no filtro"}
+            </strong>
           </div>
         </div>
       </div>
@@ -669,81 +710,87 @@ export default function RelatoriosPage() {
           </div>
 
           <div className="space-y-5">
-            {operatorPerformance.rows.map((op) => {
-              const callWidthPct = Math.max(
-                6,
-                Math.round((op.totalCalls / operatorPerformance.maxCalls) * 100)
-              );
-              const successWidthPct =
-                op.totalCalls > 0
-                  ? Math.round((op.successCalls / operatorPerformance.maxCalls) * 100)
-                  : 0;
+            {operatorPerformance.rows.length === 0 ? (
+              <div className="p-6 rounded-lg bg-[#FAFAF9] border border-[#E7E5E4] text-center text-xs text-[#78716C] italic">
+                Nenhum operador comercial com empresas ou interações para os filtros selecionados.
+              </div>
+            ) : (
+              operatorPerformance.rows.map((op) => {
+                const callWidthPct =
+                  op.totalCalls > 0
+                    ? Math.max(6, Math.round((op.totalCalls / operatorPerformance.maxCalls) * 100))
+                    : 0;
+                const successWidthPct =
+                  op.totalCalls > 0
+                    ? Math.round((op.successCalls / operatorPerformance.maxCalls) * 100)
+                    : 0;
 
-              return (
-                <div
-                  key={op.nome}
-                  className="p-4 rounded-lg bg-[#FAFAF9] border border-[#E7E5E4] space-y-3"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#0F172A] text-white text-xs font-bold flex items-center justify-center">
-                        {op.nome.charAt(0).toUpperCase()}
+                return (
+                  <div
+                    key={op.nome}
+                    className="p-4 rounded-lg bg-[#FAFAF9] border border-[#E7E5E4] space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-[#0F172A] text-white text-xs font-bold flex items-center justify-center">
+                          {op.nome.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <span className="font-bold text-sm text-[#1C1917]">{op.nome}</span>
+                          <span className="ml-2 text-[11px] text-[#78716C]">
+                            ({op.leadsTrabalhados} empresas na carteira)
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-bold text-sm text-[#1C1917]">{op.nome}</span>
-                        <span className="ml-2 text-[11px] text-[#78716C]">
-                          ({op.leadsTrabalhados} empresas na carteira)
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                          Efetividade: {op.hitRate}%
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                          {op.cotacoes} cotações
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 border border-teal-300 font-bold flex items-center gap-1">
+                          <Award className="w-3 h-3 text-[#0D9488]" />
+                          {op.fechados} ganhos ({op.conversionRate}%)
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                        Efetividade: {op.hitRate}%
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
-                        {op.cotacoes} cotações
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 border border-teal-300 font-bold flex items-center gap-1">
-                        <Award className="w-3 h-3 text-[#0D9488]" />
-                        {op.fechados} ganhos ({op.conversionRate}%)
-                      </span>
-                    </div>
-                  </div>
+                    {/* Barras Visuais Comparativas */}
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
+                          <span>Total de Ligações / Contatos Realizados</span>
+                          <strong className="font-mono text-[#1C1917]">{op.totalCalls} contatos</strong>
+                        </div>
+                        <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#0F172A] rounded-full transition-all duration-500"
+                            style={{ width: `${callWidthPct}%` }}
+                          />
+                        </div>
+                      </div>
 
-                  {/* Barras Visuais Comparativas */}
-                  <div className="space-y-2">
-                    <div>
-                      <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
-                        <span>Total de Ligações / Contatos Realizados</span>
-                        <strong className="font-mono text-[#1C1917]">{op.totalCalls} contatos</strong>
-                      </div>
-                      <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0F172A] rounded-full transition-all duration-500"
-                          style={{ width: `${callWidthPct}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
-                        <span>Contatos Atendidos com Sucesso (Fala com Decisor)</span>
-                        <strong className="font-mono text-[#0F766E]">
-                          {op.successCalls} atendidos ({op.hitRate}%)
-                        </strong>
-                      </div>
-                      <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0D9488] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.max(successWidthPct, op.successCalls > 0 ? 6 : 0)}%` }}
-                        />
+                      <div>
+                        <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
+                          <span>Contatos Atendidos com Sucesso (Fala com Decisor)</span>
+                          <strong className="font-mono text-[#0F766E]">
+                            {op.successCalls} atendidos ({op.hitRate}%)
+                          </strong>
+                        </div>
+                        <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#0D9488] rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(successWidthPct, op.successCalls > 0 ? 6 : 0)}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -936,24 +983,33 @@ export default function RelatoriosPage() {
             </span>
           </div>
 
-          <div className="w-full h-6 rounded-md overflow-hidden flex border border-[#D6D3D1]">
-            {workflowTiming.columnsCycleTime.slice(0, 5).map((col) => {
-              const pct = Math.max(
-                8,
-                Math.round((col.avgDays / workflowTiming.totalCycleSum) * 100)
-              );
-              return (
-                <div
-                  key={col.key}
-                  style={{ width: `${pct}%` }}
-                  className={`${col.barColor} text-white text-[10px] font-bold flex items-center justify-center px-1 truncate transition-all`}
-                  title={`${col.title}: ${col.avgDays} dias (${pct}%)`}
-                >
-                  {col.shortTitle} ({col.avgDays}d)
-                </div>
-              );
-            })}
-          </div>
+          {workflowTiming.totalCycleSum === 0 ? (
+            <div className="w-full h-8 rounded-md flex items-center justify-center bg-[#FAFAF9] border border-[#E7E5E4] text-xs text-[#78716C] italic">
+              Sem dados de transição nas colunas para o filtro selecionado.
+            </div>
+          ) : (
+            <div className="w-full h-6 rounded-md overflow-hidden flex border border-[#D6D3D1]">
+              {workflowTiming.columnsCycleTime
+                .slice(0, 5)
+                .filter((col) => col.avgDays > 0)
+                .map((col) => {
+                  const pct = Math.max(
+                    8,
+                    Math.round((col.avgDays / workflowTiming.totalCycleSum) * 100)
+                  );
+                  return (
+                    <div
+                      key={col.key}
+                      style={{ width: `${pct}%` }}
+                      className={`${col.barColor} text-white text-[10px] font-bold flex items-center justify-center px-1 truncate transition-all`}
+                      title={`${col.title}: ${col.avgDays} dias (${pct}%)`}
+                    >
+                      {col.shortTitle} ({col.avgDays}d)
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </div>
 
         {/* Tabela Resumo de Cycle Time & Lead Time por Oportunidade */}
@@ -976,46 +1032,56 @@ export default function RelatoriosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E7E5E4]">
-                {workflowTiming.accountTimings.map(({ account: acc, isClosedWon, totalLeadTimeDays, perStageDays }) => (
-                  <tr key={acc.id} className="hover:bg-[#FAFAF9]">
-                    <td className="py-2.5 px-3 font-semibold text-[#1C1917]">
-                      {acc.razao_social}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      {acc.status === "lead" ? (
-                        <StatusBadge stage={acc.estagio} size="sm" />
-                      ) : (
-                        <StatusBadge status={acc.status} size="sm" />
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                      {perStageDays.prospeccao_inicial ? `${perStageDays.prospeccao_inicial}d` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                      {perStageDays.qualificacao_logistica ? `${perStageDays.qualificacao_logistica}d` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                      {perStageDays.cotacao_frete ? `${perStageDays.cotacao_frete}d` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                      {perStageDays.proposta_enviada ? `${perStageDays.proposta_enviada}d` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                      {perStageDays.negociacao ? `${perStageDays.negociacao}d` : "—"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold">
-                      <span
-                        className={`px-2 py-0.5 rounded ${
-                          isClosedWon
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : "bg-slate-100 text-slate-800"
-                        }`}
-                      >
-                        {totalLeadTimeDays} dias {isClosedWon ? "(Fechado)" : "(Em curso)"}
-                      </span>
+                {workflowTiming.accountTimings.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-[#A8A29E] italic">
+                      Nenhuma empresa encontrada para os filtros selecionados.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  workflowTiming.accountTimings.map(
+                    ({ account: acc, isClosedWon, totalLeadTimeDays, perStageDays }) => (
+                      <tr key={acc.id} className="hover:bg-[#FAFAF9]">
+                        <td className="py-2.5 px-3 font-semibold text-[#1C1917]">
+                          {acc.razao_social}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {acc.status === "lead" ? (
+                            <StatusBadge stage={acc.estagio} size="sm" />
+                          ) : (
+                            <StatusBadge status={acc.status} size="sm" />
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                          {perStageDays.prospeccao_inicial ? `${perStageDays.prospeccao_inicial}d` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                          {perStageDays.qualificacao_logistica ? `${perStageDays.qualificacao_logistica}d` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                          {perStageDays.cotacao_frete ? `${perStageDays.cotacao_frete}d` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                          {perStageDays.proposta_enviada ? `${perStageDays.proposta_enviada}d` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                          {perStageDays.negociacao ? `${perStageDays.negociacao}d` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold">
+                          <span
+                            className={`px-2 py-0.5 rounded ${
+                              isClosedWon
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            {totalLeadTimeDays} dias {isClosedWon ? "(Fechado)" : "(Em curso)"}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  )
+                )}
               </tbody>
             </table>
           </div>
