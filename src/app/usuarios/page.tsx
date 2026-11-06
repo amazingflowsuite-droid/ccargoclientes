@@ -36,6 +36,8 @@ interface DispatchedLinkInfo {
   resetUrl: string;
   mailtoUrl: string;
   emailSentViaProvider: boolean;
+  providerConfigured?: boolean;
+  providerError?: string | null;
 }
 
 export default function UsuariosPage() {
@@ -77,7 +79,7 @@ export default function UsuariosPage() {
     email: string;
     tipo: "convite" | "reset";
     resetUrl: string;
-  }) {
+  }): Promise<boolean> {
     try {
       const res = await fetch("/api/auth/send-password-link", {
         method: "POST",
@@ -85,6 +87,7 @@ export default function UsuariosPage() {
         body: JSON.stringify(params),
       });
       const data = await res.json();
+      const sent = Boolean(data.emailSentViaProvider);
       setDispatchedLink({
         tipo: params.tipo,
         nome: params.nome,
@@ -97,8 +100,11 @@ export default function UsuariosPage() {
           )}&body=${encodeURIComponent(
             `Olá ${params.nome},\n\nDefina sua senha de acesso ao sistema CCargo pelo link:\n${params.resetUrl}`
           )}`,
-        emailSentViaProvider: Boolean(data.emailSentViaProvider),
+        emailSentViaProvider: sent,
+        providerConfigured: Boolean(data.providerConfigured),
+        providerError: data.providerError || null,
       });
+      return sent;
     } catch {
       setDispatchedLink({
         tipo: params.tipo,
@@ -111,7 +117,10 @@ export default function UsuariosPage() {
           `Olá ${params.nome},\n\nDefina sua senha de acesso ao sistema CCargo pelo link:\n${params.resetUrl}`
         )}`,
         emailSentViaProvider: false,
+        providerConfigured: false,
+        providerError: null,
       });
+      return false;
     }
   }
 
@@ -129,15 +138,17 @@ export default function UsuariosPage() {
       });
 
       if (res.success && res.user && res.resetUrl) {
-        setSuccessMsg(
-          `Usuário "${res.user.nome}" cadastrado! Link exclusivo de definição de senha preparado para ${res.user.email}.`
-        );
-        await dispatchEmailNotification({
+        const sentAutomatically = await dispatchEmailNotification({
           nome: res.user.nome,
           email: res.user.email,
           tipo: "convite",
           resetUrl: res.resetUrl,
         });
+        setSuccessMsg(
+          sentAutomatically
+            ? `Usuário "${res.user.nome}" cadastrado e e-mail enviado diretamente para ${res.user.email} via Hostinger!`
+            : `Usuário "${res.user.nome}" cadastrado! Link exclusivo de definição de senha preparado para ${res.user.email}.`
+        );
         setNome("");
         setEmail("");
         setPerfil("comercial");
@@ -163,15 +174,17 @@ export default function UsuariosPage() {
     try {
       const res = await requestPasswordReset(u.id);
       if (res.success && res.resetUrl) {
-        setSuccessMsg(
-          `Reset de senha liberado para "${u.nome}"! Link de redefinição gerado para ${u.email}.`
-        );
-        await dispatchEmailNotification({
+        const sentAutomatically = await dispatchEmailNotification({
           nome: u.nome,
           email: u.email,
           tipo: "reset",
           resetUrl: res.resetUrl,
         });
+        setSuccessMsg(
+          sentAutomatically
+            ? `Reset liberado e e-mail enviado diretamente para ${u.email} via Hostinger!`
+            : `Reset de senha liberado para "${u.nome}"! Link de redefinição gerado para ${u.email}.`
+        );
         await loadUsers();
       } else {
         setError(res.error || "Não foi possível gerar o link de redefinição.");
@@ -267,12 +280,24 @@ export default function UsuariosPage() {
             </button>
           </div>
 
-          <p className="text-xs text-[#115E59]">
-            Destinatário: <strong className="font-mono">{dispatchedLink.email}</strong> —{" "}
-            {dispatchedLink.emailSentViaProvider
-              ? "E-mail enviado automaticamente pelo servidor."
-              : "Clique em 'Enviar por E-mail' abaixo para disparar pelo seu cliente de e-mail ou envie o link único diretamente ao colaborador:"}
-          </p>
+          <div className="space-y-1.5">
+            <p className="text-xs text-[#115E59]">
+              Destinatário: <strong className="font-mono">{dispatchedLink.email}</strong> —{" "}
+              {dispatchedLink.emailSentViaProvider ? (
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                  E-mail enviado diretamente pelo servidor SMTP Hostinger!
+                </span>
+              ) : (
+                "Utilize o botão abaixo para enviar pelo seu aplicativo de e-mail ou copie o link único para enviar ao colaborador:"
+              )}
+            </p>
+            {dispatchedLink.providerError && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded">
+                Aviso do servidor SMTP: {dispatchedLink.providerError}
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white p-2.5 rounded border border-[#99F6E4]">
             <input
