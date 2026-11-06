@@ -13,6 +13,8 @@ import {
   MessageSquare,
   ExternalLink,
   Plus,
+  XCircle,
+  ChevronRight,
 } from "lucide-react";
 
 interface LeadDetailsModalProps {
@@ -33,6 +35,8 @@ interface LeadDetailsModalProps {
   onAddContactLog: (e: React.FormEvent) => void;
   currentOperatorName: string;
   whatsAppUrl: string | null;
+  onAdvanceStage: (lead: Account) => void;
+  onDisqualify: (lead: Account) => void;
   onClose: () => void;
 }
 
@@ -54,20 +58,27 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   onAddContactLog,
   currentOperatorName,
   whatsAppUrl,
+  onAdvanceStage,
+  onDisqualify,
   onClose,
 }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-lg border border-[#E7E5E4] max-w-3xl w-full p-6 shadow-floating space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
-        {/* Header com Botão de Relatório PDF em Destaque */}
+        {/* Header com Botão de Relatório PDF e Ações do Funil */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-[#E7E5E4] pb-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-serif font-bold text-lg text-[#1C1917]">
-                {selectedLead.razao_social}
+                {selectedLead.nome_fantasia || selectedLead.razao_social}
               </h3>
               <StatusBadge stage={selectedLead.estagio} size="sm" />
             </div>
+            {selectedLead.nome_fantasia && (
+              <div className="text-xs text-[#57534E] font-medium mt-0.5">
+                Razão Social: {selectedLead.razao_social}
+              </div>
+            )}
             <div className="text-xs font-mono text-[#57534E] mt-1 flex flex-wrap items-center gap-3">
               <span>CNPJ: {formatCNPJ(selectedLead.cnpj)}</span>
               <span>•</span>
@@ -78,14 +89,41 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start">
+          <div className="flex flex-wrap items-center gap-2 self-start">
             <button
               type="button"
               onClick={() => generateClientDossierPDF(selectedLead, leadLogs)}
-              className="px-3.5 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold rounded-md flex items-center gap-1.5 shadow-sm transition-colors"
+              className="px-3 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold rounded-md flex items-center gap-1.5 shadow-sm transition-colors"
             >
               <Printer className="w-3.5 h-3.5 text-[#0D9488]" />
-              <span>Relatório do Cliente (PDF)</span>
+              <span>Relatório PDF</span>
+            </button>
+
+            {selectedLead.estagio !== "fechado_ganho" && (
+              <button
+                type="button"
+                onClick={() => {
+                  onAdvanceStage(selectedLead);
+                  onClose();
+                }}
+                className="px-3 py-1.5 bg-[#F0FDFA] hover:bg-[#CCFBF1] text-[#0F766E] border border-[#99F6E4] text-xs font-semibold rounded-md flex items-center gap-1 transition-colors"
+              >
+                <span>Avançar Etapa</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onDisqualify(selectedLead);
+              }}
+              className="px-2.5 py-1.5 text-red-600 hover:bg-red-50 border border-red-200 text-xs font-semibold rounded-md flex items-center gap-1 transition-colors"
+              title="Desqualificar oportunidade"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              <span>Desqualificar</span>
             </button>
 
             <button
@@ -98,7 +136,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Dados Cadastrais & Perfil de Carga */}
+        {/* Dados Cadastrais & Perfil Completo de Carga/Frota */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-[#FAFAF9] rounded-md border border-[#E7E5E4] text-xs">
           <div>
             <strong className="text-slate-700">Decisor:</strong>{" "}
@@ -106,8 +144,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             {selectedLead.contato_cargo || "Cargo n/d"})
           </div>
           <div>
-            <strong className="text-slate-700">Telefone:</strong>{" "}
+            <strong className="text-slate-700">Telefone / E-mail:</strong>{" "}
             {selectedLead.telefone || "Não informado"}
+            {selectedLead.email ? ` • ${selectedLead.email}` : ""}
           </div>
           <div>
             <strong className="text-slate-700">Modalidade:</strong>{" "}
@@ -119,13 +158,13 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </div>
           {selectedLead.rotas_principais && selectedLead.rotas_principais.length > 0 && (
             <div className="sm:col-span-2">
-              <strong className="text-slate-700">Rotas:</strong>{" "}
+              <strong className="text-slate-700">Rotas de Interesse:</strong>{" "}
               {selectedLead.rotas_principais.join(", ")}
             </div>
           )}
           {selectedLead.tipos_veiculos && selectedLead.tipos_veiculos.length > 0 && (
             <div className="sm:col-span-2">
-              <strong className="text-slate-700">Veículos:</strong>{" "}
+              <strong className="text-slate-700">Frota / Veículos Demandados:</strong>{" "}
               {selectedLead.tipos_veiculos.join(", ")}
             </div>
           )}

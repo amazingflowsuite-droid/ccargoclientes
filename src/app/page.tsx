@@ -457,7 +457,7 @@ export default function DashboardKanbanPage() {
       <div className="flex items-center justify-between text-xs text-[#57534E] px-1">
         <span className="inline-flex items-center gap-1.5 text-[#0F766E] font-medium">
           <GripVertical className="w-3.5 h-3.5 text-[#0D9488]" />
-          Arraste os cards entre as 6 colunas ou clique em &ldquo;Ficha & Ligações&rdquo; para anotar contatos e emitir PDF
+          Arraste os cards para mudar de etapa ou clique sobre o card para abrir a Ficha Completa, Ligações e PDF
         </span>
         <span className="font-semibold text-[#1C1917]">
           Exibindo {filteredLeads.length} oportunidade(s)
@@ -525,9 +525,6 @@ export default function DashboardKanbanPage() {
                       onDragStart={handleDragStart}
                       onDragEnd={() => setDraggedAccountId(null)}
                       onOpenDetails={handleOpenLeadDetails}
-                      onQuickPrintPDF={handleQuickPrintClientPDF}
-                      onDisqualify={setDesqualifyingAccount}
-                      onAdvanceStage={handleAdvanceStage}
                     />
                   ))
                 )}
@@ -557,6 +554,8 @@ export default function DashboardKanbanPage() {
           onAddContactLog={handleAddContactLog}
           currentOperatorName={getCurrentOperator()}
           whatsAppUrl={getWhatsAppUrl(selectedLead)}
+          onAdvanceStage={handleAdvanceStage}
+          onDisqualify={setDesqualifyingAccount}
           onClose={() => setSelectedLead(null)}
         />
       )}
