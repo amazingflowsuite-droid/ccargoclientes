@@ -124,11 +124,19 @@ export default function DashboardKanbanPage() {
       setAuthUser(getAuthenticatedUser());
       setOperators(getOperatorsList());
     };
+    const clearDragState = () => {
+      setDraggedAccountId(null);
+      setDragOverStage(null);
+    };
     window.addEventListener("ccargo-operator-changed", handleAuthOrOpChange);
     window.addEventListener("ccargo-auth-changed", handleAuthOrOpChange);
+    window.addEventListener("dragend", clearDragState);
+    window.addEventListener("drop", clearDragState);
     return () => {
       window.removeEventListener("ccargo-operator-changed", handleAuthOrOpChange);
       window.removeEventListener("ccargo-auth-changed", handleAuthOrOpChange);
+      window.removeEventListener("dragend", clearDragState);
+      window.removeEventListener("drop", clearDragState);
     };
   }, []);
 
@@ -223,8 +231,9 @@ export default function DashboardKanbanPage() {
 
   async function handleDrop(e: React.DragEvent, targetStage: LeadStage) {
     e.preventDefault();
-    setDragOverStage(null);
     const accountId = draggedAccountId || e.dataTransfer.getData("text/plain");
+    setDraggedAccountId(null);
+    setDragOverStage(null);
     if (!accountId) return;
 
     const account = accounts.find((a) => a.id === accountId);
