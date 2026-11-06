@@ -62,9 +62,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   onDisqualify,
   onClose,
 }) => {
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg border border-[#E7E5E4] max-w-3xl w-full p-6 shadow-floating space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-lg border border-[#E7E5E4] max-w-3xl w-full p-6 shadow-floating space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto"
+      >
         {/* Header com Botão de Relatório PDF e Ações do Funil */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-[#E7E5E4] pb-4">
           <div>

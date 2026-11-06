@@ -93,11 +93,14 @@ export default function NovoLeadPage() {
     });
   }, []);
 
-  // Efeito para verificar colisão no banco sempre que o CNPJ atinge 14 dígitos
+  // Efeito com debounce para verificar colisão no banco assim que atinge 14 dígitos
   useEffect(() => {
     const clean = cleanCNPJ(cnpjInput);
     if (clean.length === 14) {
-      handleCheckCollision(clean);
+      const timer = setTimeout(() => {
+        handleCheckCollision(clean);
+      }, 250);
+      return () => clearTimeout(timer);
     } else {
       setCollisionResult(null);
     }

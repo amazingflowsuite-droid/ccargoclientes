@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+// Cache em memória (TTL: 24 horas) para reduzir consumo de quota e acelerar resposta
+const cnpjCache = new Map<string, { timestamp: number; payload: Record<string, unknown> }>();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const rawCnpj = searchParams.get("cnpj") || "";
@@ -12,6 +16,14 @@ export async function GET(request: NextRequest) {
       { error: "CNPJ deve conter exatamente 14 dígitos numéricos." },
       { status: 400 }
     );
+  }
+
+  // Verifica cache antes de chamar APIs externas
+  const cached = cnpjCache.get(cleanCnpj);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json(cached.payload, {
+      headers: { "X-Cache": "HIT" },
+    });
   }
 
   const userAgent =
@@ -34,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json({
+      const payload = {
         success: true,
         data: {
           cnpj: data.cnpj,
@@ -52,6 +64,10 @@ export async function GET(request: NextRequest) {
           cep: data.cep || "",
           ddd_telefone_1: data.ddd_telefone_1 || "",
         },
+      };
+      cnpjCache.set(cleanCnpj, { timestamp: Date.now(), payload });
+      return NextResponse.json(payload, {
+        headers: { "X-Cache": "MISS" },
       });
     }
   } catch (err) {
@@ -75,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json({
+      const payload = {
         success: true,
         data: {
           cnpj: data.cnpj,
@@ -93,6 +109,10 @@ export async function GET(request: NextRequest) {
           cep: data.cep || "",
           ddd_telefone_1: data.ddd_telefone_1 || data.telefone || "",
         },
+      };
+      cnpjCache.set(cleanCnpj, { timestamp: Date.now(), payload });
+      return NextResponse.json(payload, {
+        headers: { "X-Cache": "MISS" },
       });
     }
   } catch (err) {

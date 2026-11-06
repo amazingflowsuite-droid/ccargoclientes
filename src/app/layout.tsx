@@ -1,7 +1,21 @@
 import type { Metadata } from "next";
+import { Inter, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { AuthGuard } from "@/components/AuthGuard";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const libreBaskerville = Libre_Baskerville({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  variable: "--font-baskerville",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "CCargo | Prospecção Comercial",
@@ -14,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className="min-h-screen bg-[#FAFAF9] text-[#1C1917] antialiased flex flex-col">
+    <html lang="pt-BR" className={`${inter.variable} ${libreBaskerville.variable}`}>
+      <body className="min-h-screen bg-[#FAFAF9] text-[#1C1917] antialiased flex flex-col font-sans">
         <Navbar />
         <main className="flex-1 max-w-[1680px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <AuthGuard>{children}</AuthGuard>

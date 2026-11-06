@@ -31,8 +31,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        serif: ["'Libre Baskerville'", "Georgia", "serif"],
-        sans: ["'Inter'", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        serif: ["var(--font-baskerville)", "'Libre Baskerville'", "Georgia", "serif"],
+        sans: ["var(--font-inter)", "'Inter'", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
         mono: ["'Source Code Pro'", "Consolas", "monospace"],
       },
       borderRadius: {

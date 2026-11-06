@@ -33,7 +33,7 @@ function getDaysInCurrentStage(lead: Account): number {
   return Math.max(1, Math.round((Date.now() - startMs) / DAY_MS));
 }
 
-export const KanbanCard: React.FC<KanbanCardProps> = ({
+const KanbanCardComponent: React.FC<KanbanCardProps> = ({
   lead,
   isDragging,
   whatsAppUrl,
@@ -167,3 +167,5 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     </div>
   );
 };
+
+export const KanbanCard = React.memo(KanbanCardComponent);

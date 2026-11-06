@@ -61,8 +61,8 @@ function DefinirSenhaContent() {
     e.preventDefault();
     setFormError(null);
 
-    if (novaSenha.trim().length < 6) {
-      setFormError("A senha deve conter no mínimo 6 caracteres.");
+    if (novaSenha.trim().length < 8) {
+      setFormError("A senha deve conter no mínimo 8 caracteres para sua segurança.");
       return;
     }
 

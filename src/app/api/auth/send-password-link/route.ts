@@ -153,6 +153,48 @@ export async function POST(request: Request) {
       );
     }
 
+    // Blindagem de Segurança (SEC-03): Validação anti Open-Relay e Phishing
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return NextResponse.json(
+        { success: false, error: "Endereço de e-mail inválido." },
+        { status: 400 }
+      );
+    }
+
+    try {
+      const parsedUrl = new URL(resetUrl);
+      if (!parsedUrl.pathname.startsWith("/definir-senha")) {
+        return NextResponse.json(
+          { success: false, error: "URL de definição inválida." },
+          { status: 400 }
+        );
+      }
+      const allowedHosts = [
+        "localhost",
+        "127.0.0.1",
+        "ccargoclientes.vercel.app",
+        "ccargo.com.br",
+      ];
+      const isAllowedHost = allowedHosts.some(
+        (h) =>
+          parsedUrl.hostname === h ||
+          parsedUrl.hostname.endsWith(`.${h}`) ||
+          parsedUrl.hostname.endsWith(".vercel.app")
+      );
+      if (!isAllowedHost) {
+        return NextResponse.json(
+          { success: false, error: "Destino da URL não autorizado por segurança." },
+          { status: 400 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Formato de URL inválido." },
+        { status: 400 }
+      );
+    }
+
     const subject =
       tipo === "convite"
         ? "CCargo Prospecção - Convite de Acesso e Definição de Senha"

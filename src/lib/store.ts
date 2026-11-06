@@ -289,8 +289,14 @@ function saveSecurityOverlay(email: string, data: UserSecurityOverlayItem): void
 }
 
 function generateSecureToken(): string {
-  const randA = Math.random().toString(36).substring(2, 10);
-  const randB = Math.random().toString(36).substring(2, 10);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `ccargo_${Date.now().toString(36)}_${hex}`;
+  }
+  const randA = Math.random().toString(36).substring(2, 12);
+  const randB = Math.random().toString(36).substring(2, 12);
   return `ccargo_${Date.now().toString(36)}_${randA}${randB}`;
 }
 
@@ -659,24 +665,34 @@ export async function validatePasswordResetToken(
   token: string,
   emailHint?: string
 ): Promise<{ valid: boolean; user?: AppUser; error?: string }> {
-  if (!token) {
+  const cleanToken = (token || "").trim();
+  if (!cleanToken) {
     return { valid: false, error: "Link de definição de senha inválido ou incompleto." };
   }
 
   const users = await fetchAllAppUsers();
+  // Blindagem de Segurança (SEC-05): O token real é OBRIGATÓRIO para validação
   const matched = users.find(
     (u) =>
-      u.reset_token === token ||
-      u.senha === `__PENDING_${token}` ||
-      (emailHint &&
-        u.email.toLowerCase() === emailHint.toLowerCase().trim() &&
-        u.status_senha === "pendente_definicao")
+      Boolean(u.reset_token && u.reset_token === cleanToken) ||
+      u.senha === `__PENDING_${cleanToken}`
   );
 
   if (!matched) {
     return {
       valid: false,
       error: "Este link de definição de senha já foi utilizado ou expirou.",
+    };
+  }
+
+  // Se houver emailHint na URL, deve corresponder estritamente ao e-mail do titular do token
+  if (
+    emailHint &&
+    matched.email.toLowerCase().trim() !== emailHint.toLowerCase().trim()
+  ) {
+    return {
+      valid: false,
+      error: "O e-mail informado não corresponde ao titular deste link de segurança.",
     };
   }
 
@@ -702,10 +718,10 @@ export async function completePasswordDefinition(params: {
   novaSenha: string;
 }): Promise<{ success: boolean; user?: AppUser; error?: string }> {
   const cleanPass = params.novaSenha.trim();
-  if (cleanPass.length < 6) {
+  if (cleanPass.length < 8) {
     return {
       success: false,
-      error: "A senha deve ter pelo menos 6 caracteres para sua segurança.",
+      error: "A senha deve conter no mínimo 8 caracteres para sua segurança.",
     };
   }
 

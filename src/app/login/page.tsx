@@ -116,48 +116,50 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Atalhos para Avaliação de Perfis */}
-        <div className="pt-4 border-t border-[#E7E5E4] space-y-2.5">
-          <span className="block text-[11px] font-semibold uppercase tracking-wider text-[#78716C] text-center">
-            Acessos Iniciais Configurados (Clique para preencher)
-          </span>
+        {/* Atalhos para Avaliação de Perfis (Exibido apenas em ambiente de desenvolvimento / teste) */}
+        {process.env.NODE_ENV !== "production" && (
+          <div className="pt-4 border-t border-[#E7E5E4] space-y-2.5">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-[#78716C] text-center">
+              Acessos de Teste / Dev (Clique para preencher)
+            </span>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => fillCredentials("gestor@ccargo.com.br", "123456")}
-              className="p-2.5 rounded border border-[#E7E5E4] hover:border-[#0D9488] bg-[#FAFAF9] hover:bg-[#F0FDFA] text-left transition-all"
-            >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#1C1917]">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#0D9488]" />
-                Perfil Gestor
-              </div>
-              <div className="text-[10px] font-mono text-[#57534E] mt-0.5 truncate">
-                gestor@ccargo.com.br
-              </div>
-              <div className="text-[10px] text-[#78716C]">
-                Acesso total + Relatórios + Criar Usuários
-              </div>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => fillCredentials("gestor@ccargo.com.br", "123456")}
+                className="p-2.5 rounded border border-[#E7E5E4] hover:border-[#0D9488] bg-[#FAFAF9] hover:bg-[#F0FDFA] text-left transition-all"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#1C1917]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#0D9488]" />
+                  Perfil Gestor (Dev)
+                </div>
+                <div className="text-[10px] font-mono text-[#57534E] mt-0.5 truncate">
+                  gestor@ccargo.com.br
+                </div>
+                <div className="text-[10px] text-[#78716C]">
+                  Acesso total + Relatórios + Criar Usuários
+                </div>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => fillCredentials("comercial@ccargo.com.br", "123456")}
-              className="p-2.5 rounded border border-[#E7E5E4] hover:border-[#0D9488] bg-[#FAFAF9] hover:bg-[#F0FDFA] text-left transition-all"
-            >
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#1C1917]">
-                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                Perfil Comercial
-              </div>
-              <div className="text-[10px] font-mono text-[#57534E] mt-0.5 truncate">
-                comercial@ccargo.com.br
-              </div>
-              <div className="text-[10px] text-[#78716C]">
-                Operação de Funil + Ligações (Ana Paula)
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={() => fillCredentials("comercial@ccargo.com.br", "123456")}
+                className="p-2.5 rounded border border-[#E7E5E4] hover:border-[#0D9488] bg-[#FAFAF9] hover:bg-[#F0FDFA] text-left transition-all"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#1C1917]">
+                  <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                  Perfil Comercial (Dev)
+                </div>
+                <div className="text-[10px] font-mono text-[#57534E] mt-0.5 truncate">
+                  comercial@ccargo.com.br
+                </div>
+                <div className="text-[10px] text-[#78716C]">
+                  Operação de Funil + Ligações
+                </div>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
