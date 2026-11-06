@@ -8,7 +8,6 @@ import {
   deleteAppUser,
   getAuthenticatedUser,
   requestPasswordReset,
-  buildPasswordResetUrl,
 } from "@/lib/store";
 import { AppUser, UserRole } from "@/types";
 import {
@@ -22,23 +21,9 @@ import {
   CheckCircle2,
   Loader2,
   KeyRound,
-  Copy,
-  Check,
   Send,
-  ExternalLink,
   Clock,
 } from "lucide-react";
-
-interface DispatchedLinkInfo {
-  tipo: "convite" | "reset";
-  nome: string;
-  email: string;
-  resetUrl: string;
-  mailtoUrl: string;
-  emailSentViaProvider: boolean;
-  providerConfigured?: boolean;
-  providerError?: string | null;
-}
 
 export default function UsuariosPage() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -53,10 +38,6 @@ export default function UsuariosPage() {
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // Informações do último link de definição/reset disparado
-  const [dispatchedLink, setDispatchedLink] = useState<DispatchedLinkInfo | null>(null);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     const auth = getAuthenticatedUser();
@@ -79,7 +60,7 @@ export default function UsuariosPage() {
     email: string;
     tipo: "convite" | "reset";
     resetUrl: string;
-  }): Promise<boolean> {
+  }): Promise<{ sent: boolean; providerError?: string | null }> {
     try {
       const res = await fetch("/api/auth/send-password-link", {
         method: "POST",
@@ -87,40 +68,12 @@ export default function UsuariosPage() {
         body: JSON.stringify(params),
       });
       const data = await res.json();
-      const sent = Boolean(data.emailSentViaProvider);
-      setDispatchedLink({
-        tipo: params.tipo,
-        nome: params.nome,
-        email: params.email,
-        resetUrl: params.resetUrl,
-        mailtoUrl:
-          data.mailtoUrl ||
-          `mailto:${encodeURIComponent(params.email)}?subject=${encodeURIComponent(
-            "CCargo Prospecção - Definição de Senha"
-          )}&body=${encodeURIComponent(
-            `Olá ${params.nome},\n\nDefina sua senha de acesso ao sistema CCargo pelo link:\n${params.resetUrl}`
-          )}`,
-        emailSentViaProvider: sent,
-        providerConfigured: Boolean(data.providerConfigured),
+      return {
+        sent: Boolean(data.emailSentViaProvider),
         providerError: data.providerError || null,
-      });
-      return sent;
+      };
     } catch {
-      setDispatchedLink({
-        tipo: params.tipo,
-        nome: params.nome,
-        email: params.email,
-        resetUrl: params.resetUrl,
-        mailtoUrl: `mailto:${encodeURIComponent(params.email)}?subject=${encodeURIComponent(
-          "CCargo Prospecção - Definição de Senha"
-        )}&body=${encodeURIComponent(
-          `Olá ${params.nome},\n\nDefina sua senha de acesso ao sistema CCargo pelo link:\n${params.resetUrl}`
-        )}`,
-        emailSentViaProvider: false,
-        providerConfigured: false,
-        providerError: null,
-      });
-      return false;
+      return { sent: false, providerError: "Erro de comunicação ao disparar e-mail." };
     }
   }
 
@@ -138,17 +91,22 @@ export default function UsuariosPage() {
       });
 
       if (res.success && res.user && res.resetUrl) {
-        const sentAutomatically = await dispatchEmailNotification({
+        const dispatchRes = await dispatchEmailNotification({
           nome: res.user.nome,
           email: res.user.email,
           tipo: "convite",
           resetUrl: res.resetUrl,
         });
-        setSuccessMsg(
-          sentAutomatically
-            ? `Usuário "${res.user.nome}" cadastrado e e-mail enviado diretamente para ${res.user.email} via Hostinger!`
-            : `Usuário "${res.user.nome}" cadastrado! Link exclusivo de definição de senha preparado para ${res.user.email}.`
-        );
+        if (dispatchRes.sent) {
+          setSuccessMsg(
+            `Usuário "${res.user.nome}" cadastrado! O link exclusivo de criação de senha foi enviado por e-mail para ${res.user.email}.`
+          );
+        } else {
+          setError(
+            dispatchRes.providerError ||
+              `Usuário cadastrado, porém não foi possível enviar o e-mail automaticamente para ${res.user.email}.`
+          );
+        }
         setNome("");
         setEmail("");
         setPerfil("comercial");
@@ -163,7 +121,7 @@ export default function UsuariosPage() {
 
   async function handleResetPassword(u: AppUser) {
     const ok = confirm(
-      `Deseja gerar e enviar um link de redefinição de senha para "${u.nome}" (${u.email})?\n\nA senha anterior deixará de valer e o usuário deverá criar uma nova senha pelo link enviado.`
+      `Deseja enviar um link de redefinição de senha para "${u.nome}" (${u.email})?\n\nA senha anterior deixará de valer e o usuário receberá um e-mail para criar sua nova senha.`
     );
     if (!ok) return;
 
@@ -174,17 +132,22 @@ export default function UsuariosPage() {
     try {
       const res = await requestPasswordReset(u.id);
       if (res.success && res.resetUrl) {
-        const sentAutomatically = await dispatchEmailNotification({
+        const dispatchRes = await dispatchEmailNotification({
           nome: u.nome,
           email: u.email,
           tipo: "reset",
           resetUrl: res.resetUrl,
         });
-        setSuccessMsg(
-          sentAutomatically
-            ? `Reset liberado e e-mail enviado diretamente para ${u.email} via Hostinger!`
-            : `Reset de senha liberado para "${u.nome}"! Link de redefinição gerado para ${u.email}.`
-        );
+        if (dispatchRes.sent) {
+          setSuccessMsg(
+            `E-mail de redefinição de senha enviado com sucesso para ${u.email}!`
+          );
+        } else {
+          setError(
+            dispatchRes.providerError ||
+              `Não foi possível enviar o e-mail para ${u.email}.`
+          );
+        }
         await loadUsers();
       } else {
         setError(res.error || "Não foi possível gerar o link de redefinição.");
@@ -206,12 +169,6 @@ export default function UsuariosPage() {
 
     await deleteAppUser(u.id);
     await loadUsers();
-  }
-
-  function handleCopyLink(url: string) {
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
   }
 
   // Bloqueio caso um usuário "comercial" tente acessar /usuarios pela URL
@@ -258,93 +215,6 @@ export default function UsuariosPage() {
           </p>
         </div>
       </div>
-
-      {/* Banner de Disparo de E-mail / Link de Definição de Senha (US-14) */}
-      {dispatchedLink && (
-        <div className="bg-[#F0FDFA] border border-[#99F6E4] rounded-lg p-5 shadow-subtle space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-[#0F766E]">
-              <KeyRound className="w-5 h-5 flex-shrink-0" />
-              <h3 className="font-serif text-sm font-bold">
-                {dispatchedLink.tipo === "convite"
-                  ? `Convite de Criação de Senha Gerado para ${dispatchedLink.nome}`
-                  : `Link de Reset de Senha Gerado para ${dispatchedLink.nome}`}
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => setDispatchedLink(null)}
-              className="text-xs text-[#0F766E] hover:underline self-end sm:self-center"
-            >
-              Fechar aviso ✕
-            </button>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="text-xs text-[#115E59]">
-              Destinatário: <strong className="font-mono">{dispatchedLink.email}</strong> —{" "}
-              {dispatchedLink.emailSentViaProvider ? (
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                  E-mail enviado diretamente pelo servidor SMTP Hostinger!
-                </span>
-              ) : (
-                "Utilize o botão abaixo para enviar pelo seu aplicativo de e-mail ou copie o link único para enviar ao colaborador:"
-              )}
-            </p>
-            {dispatchedLink.providerError && (
-              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded">
-                Aviso do servidor SMTP: {dispatchedLink.providerError}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white p-2.5 rounded border border-[#99F6E4]">
-            <input
-              type="text"
-              readOnly
-              value={dispatchedLink.resetUrl}
-              className="flex-1 text-xs font-mono text-[#1C1917] bg-transparent focus:outline-none truncate"
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCopyLink(dispatchedLink.resetUrl)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#F5F5F4] hover:bg-[#E7E5E4] text-[#1C1917] text-xs font-semibold transition-colors"
-              >
-                {copiedLink ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    Copiado!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    Copiar Link
-                  </>
-                )}
-              </button>
-
-              <a
-                href={dispatchedLink.mailtoUrl}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold transition-colors"
-              >
-                <Send className="w-3.5 h-3.5 text-[#0D9488]" />
-                Enviar por E-mail
-              </a>
-
-              <Link
-                href={dispatchedLink.resetUrl.replace(window.location.origin, "")}
-                target="_blank"
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded border border-[#0D9488] text-[#0F766E] hover:bg-[#F0FDFA] text-xs font-semibold transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Abrir Tela de Senha
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* FORMULÁRIO DE CADASTRO SEM CAMPO DE SENHA (US-14) */}
@@ -558,25 +428,6 @@ export default function UsuariosPage() {
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="inline-flex items-center justify-end gap-2">
-                            {isPending && u.reset_token && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  dispatchEmailNotification({
-                                    nome: u.nome,
-                                    email: u.email,
-                                    tipo: "convite",
-                                    resetUrl: buildPasswordResetUrl(u.reset_token!, u.email),
-                                  })
-                                }
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-[#0D9488] text-[#0F766E] hover:bg-[#F0FDFA] text-[11px] font-semibold transition-colors"
-                                title="Ver ou reenviar link pendente"
-                              >
-                                <Send className="w-3 h-3" />
-                                Ver Link
-                              </button>
-                            )}
-
                             <button
                               type="button"
                               disabled={isResetting}
