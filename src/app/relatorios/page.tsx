@@ -100,10 +100,7 @@ const WORKFLOW_COLUMNS: {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function RelatoriosPage() {
-  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
-    if (typeof window !== "undefined") return getAuthenticatedUser();
-    return null;
-  });
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [logs, setLogs] = useState<ContactLog[]>([]);
   const [operators, setOperators] = useState<OperatorUser[]>([]);

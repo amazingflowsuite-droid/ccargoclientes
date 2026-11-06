@@ -22,10 +22,7 @@ import { CCargoLogo } from "@/components/ui/CCargoLogo";
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
-    if (typeof window !== "undefined") return getAuthenticatedUser();
-    return null;
-  });
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
     const syncAuth = () => {

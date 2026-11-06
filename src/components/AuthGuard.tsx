@@ -10,14 +10,7 @@ const PUBLIC_PATHS = ["/login", "/definir-senha"];
 export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-
-  // Inicialização imediata se já estivermos no navegador (evita flash/travamento ao trocar de rota)
-  const [user, setUser] = useState<AppUser | null>(() => {
-    if (typeof window !== "undefined") {
-      return getAuthenticatedUser();
-    }
-    return null;
-  });
+  const [user, setUser] = useState<AppUser | null>(null);
   const [mounted, setMounted] = useState(false);
 
   const isPublicRoute = PUBLIC_PATHS.some(
@@ -25,10 +18,10 @@ export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children })
   );
 
   useEffect(() => {
-    setMounted(true);
     const checkAuth = () => {
       const current = getAuthenticatedUser();
       setUser(current);
+      setMounted(true);
       if (!current && !isPublicRoute) {
         router.replace("/login");
       }
@@ -47,11 +40,6 @@ export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children })
     return <>{children}</>;
   }
 
-  // Se já temos usuário autenticado no cliente, renderiza a página imediatamente sem bloquear
-  if (user) {
-    return <>{children}</>;
-  }
-
   if (!mounted) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#78716C]">
@@ -60,9 +48,13 @@ export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children })
     );
   }
 
-  return (
-    <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#78716C]">
-      Redirecionando para autenticação...
-    </div>
-  );
+  if (!user) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#78716C]">
+        Redirecionando para autenticação...
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 };
