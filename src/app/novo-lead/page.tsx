@@ -2,12 +2,25 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { checkCNPJCollision, createAccount } from "@/lib/store";
+import {
+  checkCNPJCollision,
+  createAccount,
+  getCurrentOperator,
+  getOperatorsList,
+} from "@/lib/store";
 import { fetchCompanyByCNPJ } from "@/lib/brasil-api";
 import { cleanCNPJ, formatCNPJ } from "@/lib/utils";
-import { CollisionCheckResult, DisqualificationReason, LeadStage } from "@/types";
+import { CollisionCheckResult, OperatorUser } from "@/types";
 import { CollisionAlert } from "@/components/CollisionAlert";
-import { Search, Loader2, Sparkles, Truck, Check, ArrowLeft, AlertCircle } from "lucide-react";
+import {
+  Loader2,
+  Sparkles,
+  Check,
+  ArrowLeft,
+  AlertCircle,
+  FileText,
+  UserCheck,
+} from "lucide-react";
 import Link from "next/link";
 
 const VEICULOS_DISPONIVEIS = [
@@ -19,7 +32,7 @@ const VEICULOS_DISPONIVEIS = [
   "Carreta Rodotrem / Bitrem",
   "Carreta Sider",
   "Carreta Grade Baixa",
-  "Carreta Frigorífica / Refrigerada"
+  "Carreta Frigorífica / Refrigerada",
 ];
 
 const ROTAS_COMUNS = [
@@ -27,6 +40,7 @@ const ROTAS_COMUNS = [
   "SP ⇄ PR",
   "SP ⇄ MG",
   "SP ⇄ GO / DF",
+  "SP ⇄ Interior SP (Marília/Bauru/Sorocaba)",
   "Sul ⇄ Sudeste",
   "Centro-Oeste ⇄ Porto de Santos",
   "Nordeste ⇄ Sudeste",
@@ -55,12 +69,22 @@ export default function NovoLeadPage() {
   const [veiculosSelecionados, setVeiculosSelecionados] = useState<string[]>([]);
   const [volumeMensal, setVolumeMensal] = useState("");
 
+  // Observações Importantes e Operadora (US-09 e US-10)
+  const [observacoesImportantes, setObservacoesImportantes] = useState("");
+  const [sdrResponsavel, setSdrResponsavel] = useState("Ana Paula (Comercial)");
+  const [operatorsList, setOperatorsList] = useState<OperatorUser[]>([]);
+
   // Estados de Verificação
   const [isSearchingBrasilApi, setIsSearchingBrasilApi] = useState(false);
   const [isCheckingCollision, setIsCheckingCollision] = useState(false);
   const [collisionResult, setCollisionResult] = useState<CollisionCheckResult | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setOperatorsList(getOperatorsList());
+    setSdrResponsavel(getCurrentOperator());
+  }, []);
 
   // Efeito para verificar colisão no banco sempre que o CNPJ atinge 14 dígitos
   useEffect(() => {
@@ -127,7 +151,7 @@ export default function NovoLeadPage() {
   // Bloqueio Rígido se for cliente ativo (US-01)
   const isStrictBlocked = Boolean(
     collisionResult?.has_exact_collision &&
-    collisionResult.exact_match?.status === "cliente_ativo"
+      collisionResult.exact_match?.status === "cliente_ativo"
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -159,7 +183,8 @@ export default function NovoLeadPage() {
         rotas_principais: rotasSelecionadas,
         tipos_veiculos: veiculosSelecionados,
         volume_mensal_estimado: volumeMensal || undefined,
-        sdr_responsavel_nome: "Operador Atual",
+        observacoes_importantes: observacoesImportantes.trim() || undefined,
+        sdr_responsavel_nome: sdrResponsavel || getCurrentOperator(),
       });
 
       router.push("/");
@@ -173,9 +198,8 @@ export default function NovoLeadPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-1">
           <Link
             href="/"
@@ -191,15 +215,37 @@ export default function NovoLeadPage() {
             Cadastro assistido com verificação anti-colisão de clientes da carteira e dados oficiais da Receita.
           </p>
         </div>
+
+        {/* Operadora Responsável */}
+        <div className="bg-white border border-[#E7E5E4] rounded-md px-3.5 py-2 shadow-subtle flex items-center gap-2 self-start sm:self-center">
+          <UserCheck className="w-4 h-4 text-[#0D9488]" />
+          <div className="text-xs">
+            <span className="text-[#78716C] block text-[10px] uppercase font-semibold">
+              Operadora Responsável
+            </span>
+            <select
+              value={sdrResponsavel}
+              onChange={(e) => setSdrResponsavel(e.target.value)}
+              className="font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
+            >
+              {operatorsList.map((op) => (
+                <option key={op.id} value={op.nome}>
+                  {op.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        
         {/* BLOCO 1: CHECAGEM DE CNPJ & BRASILAPI */}
         <div className="bg-white rounded-lg border border-[#E7E5E4] p-5 sm:p-6 shadow-subtle space-y-4">
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="font-serif text-lg font-bold text-[#1C1917] flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">1</span>
+              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">
+                1
+              </span>
               Validação & Identificação da Empresa
             </h2>
             <span className="text-xs text-[#78716C]">Proteção Anti-Duplicidade</span>
@@ -263,7 +309,7 @@ export default function NovoLeadPage() {
               </label>
               <input
                 type="text"
-                placeholder="Ex: Transportadora & Logística Nacional S.A."
+                placeholder="Ex: Tauste Supermercados Ltda"
                 value={razaoSocial}
                 onChange={(e) => setRazaoSocial(e.target.value)}
                 required
@@ -289,7 +335,7 @@ export default function NovoLeadPage() {
                 <label className="block text-xs font-semibold text-[#57534E] mb-1">Cidade</label>
                 <input
                   type="text"
-                  placeholder="Ex: Campinas"
+                  placeholder="Ex: Marília"
                   value={cidade}
                   onChange={(e) => setCidade(e.target.value)}
                   className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-sm focus-ring"
@@ -316,14 +362,16 @@ export default function NovoLeadPage() {
           </div>
         </div>
 
-        {/* BLOCO 2: QUALIFICAÇÃO LOGÍSTICA & FROTAS (US-08) */}
+        {/* BLOCO 2: QUALIFICAÇÃO LOGÍSTICA & OBSERVAÇÕES IMPORTANTES (US-08 e US-10) */}
         <div className="bg-white rounded-lg border border-[#E7E5E4] p-5 sm:p-6 shadow-subtle space-y-4">
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="font-serif text-lg font-bold text-[#1C1917] flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">2</span>
-              Qualificação Operacional de Transporte
+              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">
+                2
+              </span>
+              Qualificação Operacional & Observações do Cliente
             </h2>
-            <span className="text-xs text-[#78716C]">Perfil de Frete</span>
+            <span className="text-xs text-[#78716C]">Perfil de Frete e Restrições</span>
           </div>
 
           <div className="space-y-4">
@@ -416,6 +464,24 @@ export default function NovoLeadPage() {
                 className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-sm focus-ring"
               />
             </div>
+
+            {/* NOVO CAMPO: OBSERVAÇÕES IMPORTANTES DO CLIENTE (US-10) */}
+            <div className="pt-2 border-t border-[#F5F5F4]">
+              <label className="block text-xs font-semibold text-[#1C1917] mb-1 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                Observações Importantes & Restrições do Cliente (Sai no Relatório PDF)
+              </label>
+              <p className="text-[11px] text-[#78716C] mb-2">
+                Anote o que o cliente precisa, o que ele não carrega (ex: só carga paletizada, não aceita carga batida), janelas de agendamento ou exigências de frota.
+              </p>
+              <textarea
+                rows={3}
+                placeholder="Ex: Cliente exige carga 100% paletizada. Não carrega carga batida. Recebimento apenas mediante agendamento das 07h às 13h."
+                value={observacoesImportantes}
+                onChange={(e) => setObservacoesImportantes(e.target.value)}
+                className="w-full px-3 py-2 rounded-md border border-amber-300 bg-amber-50/40 text-sm focus:bg-white focus-ring"
+              />
+            </div>
           </div>
         </div>
 
@@ -423,7 +489,9 @@ export default function NovoLeadPage() {
         <div className="bg-white rounded-lg border border-[#E7E5E4] p-5 sm:p-6 shadow-subtle space-y-4">
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="font-serif text-lg font-bold text-[#1C1917] flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">3</span>
+              <span className="w-6 h-6 rounded-full bg-[#0F172A] text-white text-xs flex items-center justify-center font-sans">
+                3
+              </span>
               Interlocutor / Contato na Empresa
             </h2>
             <span className="text-xs text-[#78716C]">Decisor de Frete</span>
@@ -431,10 +499,12 @@ export default function NovoLeadPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#57534E] mb-1">Nome do Contato</label>
+              <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                Nome do Contato
+              </label>
               <input
                 type="text"
-                placeholder="Ex: Carlos Eduardo"
+                placeholder="Ex: Henrique Martins"
                 value={contatoNome}
                 onChange={(e) => setContatoNome(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-sm focus-ring"
@@ -442,7 +512,9 @@ export default function NovoLeadPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#57534E] mb-1">Cargo / Função</label>
+              <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                Cargo / Função
+              </label>
               <input
                 type="text"
                 placeholder="Ex: Gerente de Logística / Comprador"
@@ -453,10 +525,12 @@ export default function NovoLeadPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#57534E] mb-1">Telefone / WhatsApp</label>
+              <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                Telefone / WhatsApp
+              </label>
               <input
                 type="text"
-                placeholder="(11) 99999-9999"
+                placeholder="(14) 99999-9999"
                 value={telefone}
                 onChange={(e) => setTelefone(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-sm focus-ring"
@@ -464,10 +538,12 @@ export default function NovoLeadPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#57534E] mb-1">E-mail Corporativo</label>
+              <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                E-mail Corporativo
+              </label>
               <input
                 type="email"
-                placeholder="contato@empresa.com.br"
+                placeholder="logistica@empresa.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-sm focus-ring"
@@ -510,4 +586,3 @@ export default function NovoLeadPage() {
     </div>
   );
 }
-

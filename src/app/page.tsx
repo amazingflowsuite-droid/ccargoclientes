@@ -2,30 +2,94 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { fetchAllAccounts, updateAccount, checkCNPJCollision, fetchContactLogs, addContactLog } from "@/lib/store";
-import { Account, LeadStage, DisqualificationReason, CollisionCheckResult, ContactLog } from "@/types";
+import {
+  fetchAllAccounts,
+  updateAccount,
+  checkCNPJCollision,
+  fetchContactLogs,
+  addContactLog,
+  getCurrentOperator,
+  getOperatorsList,
+} from "@/lib/store";
+import { generateClientDossierPDF } from "@/lib/pdf-report";
+import {
+  Account,
+  LeadStage,
+  DisqualificationReason,
+  CollisionCheckResult,
+  ContactLog,
+  OperatorUser,
+} from "@/types";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { CollisionAlert } from "@/components/CollisionAlert";
-import { formatCNPJ, cleanCNPJ, formatPhone } from "@/lib/utils";
-import { 
-  Truck, ShieldCheck, AlertOctagon, UserPlus, Search, 
-  ChevronRight, Phone, MapPin, Building, ArrowUpRight, 
-  CheckCircle, XCircle, FileText, Filter, MessageSquare,
-  GripVertical, Calendar, Clock, Plus, ExternalLink, User
+import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
+import {
+  Truck,
+  ShieldCheck,
+  AlertOctagon,
+  UserPlus,
+  Search,
+  ChevronRight,
+  Phone,
+  MapPin,
+  FileText,
+  MessageSquare,
+  GripVertical,
+  Plus,
+  ExternalLink,
+  Printer,
+  Save,
+  Check,
+  UserCheck,
+  BarChart3,
 } from "lucide-react";
 
 const STAGES: { key: LeadStage; title: string; color: string; badgeColor: string }[] = [
-  { key: "prospeccao_inicial", title: "1. Primeiro Contato", color: "border-slate-400", badgeColor: "bg-slate-100 text-slate-800" },
-  { key: "qualificacao_logistica", title: "2. Perfil & Frota", color: "border-blue-400", badgeColor: "bg-blue-100 text-blue-800" },
-  { key: "cotacao_frete", title: "3. Cotação de Frete", color: "border-amber-400", badgeColor: "bg-amber-100 text-amber-800" },
-  { key: "proposta_enviada", title: "4. Proposta Enviada", color: "border-purple-400", badgeColor: "bg-purple-100 text-purple-800" },
-  { key: "negociacao", title: "5. Negociação", color: "border-emerald-400", badgeColor: "bg-emerald-100 text-emerald-800" },
-  { key: "fechado_ganho", title: "6. Fechado / Ganho", color: "border-teal-500", badgeColor: "bg-teal-100 text-teal-900" },
+  {
+    key: "prospeccao_inicial",
+    title: "1. Primeiro Contato",
+    color: "border-slate-400",
+    badgeColor: "bg-slate-100 text-slate-800",
+  },
+  {
+    key: "qualificacao_logistica",
+    title: "2. Perfil & Frota",
+    color: "border-blue-400",
+    badgeColor: "bg-blue-100 text-blue-800",
+  },
+  {
+    key: "cotacao_frete",
+    title: "3. Cotação de Frete",
+    color: "border-amber-400",
+    badgeColor: "bg-amber-100 text-amber-800",
+  },
+  {
+    key: "proposta_enviada",
+    title: "4. Proposta Enviada",
+    color: "border-purple-400",
+    badgeColor: "bg-purple-100 text-purple-800",
+  },
+  {
+    key: "negociacao",
+    title: "5. Negociação",
+    color: "border-emerald-400",
+    badgeColor: "bg-emerald-100 text-emerald-800",
+  },
+  {
+    key: "fechado_ganho",
+    title: "6. Fechado / Ganho",
+    color: "border-teal-500",
+    badgeColor: "bg-teal-100 text-teal-900",
+  },
 ];
 
 export default function DashboardKanbanPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Operadores
+  const [operators, setOperators] = useState<OperatorUser[]>([]);
+  const [operatorFilter, setOperatorFilter] = useState<string>("TODOS");
 
   // Quick CNPJ Check
   const [quickCnpj, setQuickCnpj] = useState("");
@@ -37,11 +101,19 @@ export default function DashboardKanbanPage() {
   const [motivoRecusa, setMotivoRecusa] = useState<DisqualificationReason>("baixa_rentabilidade");
   const [detalheRecusa, setDetalheRecusa] = useState("");
 
-  // Modal de Detalhes & Histórico de Contatos / Touchpoints (US-07)
+  // Modal de Detalhes, Observações & Histórico de Contatos (US-07, US-10, US-11)
   const [selectedLead, setSelectedLead] = useState<Account | null>(null);
   const [leadLogs, setLeadLogs] = useState<ContactLog[]>([]);
-  const [novoCanal, setNovoCanal] = useState<"telefone" | "whatsapp" | "email" | "reuniao">("telefone");
-  const [novoResultado, setNovoResultado] = useState<"sucesso" | "sem_resposta" | "reagendado" | "recusado">("sucesso");
+  const [editObservacoes, setEditObservacoes] = useState("");
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesSavedSuccess, setNotesSavedSuccess] = useState(false);
+
+  const [novoCanal, setNovoCanal] = useState<"telefone" | "whatsapp" | "email" | "reuniao">(
+    "telefone"
+  );
+  const [novoResultado, setNovoResultado] = useState<
+    "sucesso" | "sem_resposta" | "reagendado" | "recusado"
+  >("sucesso");
   const [novoResumo, setNovoResumo] = useState("");
   const [proximoFollowUp, setProximoFollowUp] = useState("");
   const [isSavingLog, setIsSavingLog] = useState(false);
@@ -54,7 +126,12 @@ export default function DashboardKanbanPage() {
   const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null);
 
   useEffect(() => {
+    setOperators(getOperatorsList());
     loadData();
+
+    const handleOpChange = () => setOperators(getOperatorsList());
+    window.addEventListener("ccargo-operator-changed", handleOpChange);
+    return () => window.removeEventListener("ccargo-operator-changed", handleOpChange);
   }, []);
 
   async function loadData() {
@@ -67,27 +144,63 @@ export default function DashboardKanbanPage() {
     }
   }
 
-  // Carregar histórico quando um lead for selecionado
+  // Carregar histórico e observações quando um lead for selecionado
   async function handleOpenLeadDetails(lead: Account) {
     setSelectedLead(lead);
+    setEditObservacoes(lead.observacoes_importantes || "");
+    setNotesSavedSuccess(false);
     const logs = await fetchContactLogs(lead.id);
     setLeadLogs(logs);
   }
 
-  // Adicionar novo registro de contato (US-07)
+  // Salvar Observações Importantes do Cliente (US-10)
+  async function handleSaveObservacoes() {
+    if (!selectedLead) return;
+    setIsSavingNotes(true);
+    setNotesSavedSuccess(false);
+    try {
+      const updated = await updateAccount(selectedLead.id, {
+        cnpj: selectedLead.cnpj,
+        observacoes_importantes: editObservacoes.trim(),
+      });
+      const newNote = editObservacoes.trim();
+      setSelectedLead((prev) => (prev ? { ...prev, observacoes_importantes: newNote } : null));
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === selectedLead.id ? { ...a, observacoes_importantes: newNote } : a
+        )
+      );
+      setNotesSavedSuccess(true);
+      setTimeout(() => setNotesSavedSuccess(false), 3000);
+      if (updated) {
+        // sincronizado
+      }
+    } finally {
+      setIsSavingNotes(false);
+    }
+  }
+
+  // Gerar PDF direto do Card ou do Modal (US-11)
+  async function handleQuickPrintClientPDF(lead: Account) {
+    const logs = await fetchContactLogs(lead.id);
+    generateClientDossierPDF(lead, logs);
+  }
+
+  // Adicionar novo registro de contato (US-07 e US-09)
   async function handleAddContactLog(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedLead || !novoResumo.trim()) return;
 
     setIsSavingLog(true);
     try {
+      const currentOp = getCurrentOperator();
       const created = await addContactLog({
         account_id: selectedLead.id,
         tipo_contato: novoCanal,
         resultado: novoResultado,
         resumo: novoResumo.trim(),
         proximo_contato: proximoFollowUp || undefined,
-        usuario_nome: "Operador Comercial",
+        usuario_nome: currentOp,
       });
 
       setLeadLogs((prev) => [created, ...prev]);
@@ -145,12 +258,10 @@ export default function DashboardKanbanPage() {
     const account = accounts.find((a) => a.id === accountId);
     if (!account || account.estagio === targetStage) return;
 
-    // Atualização otimista imediata na interface
     setAccounts((prev) =>
       prev.map((a) => (a.id === accountId ? { ...a, estagio: targetStage } : a))
     );
 
-    // Se soltar em fechado_ganho, perguntar sobre conversão em cliente ativo
     if (targetStage === "fechado_ganho") {
       const turnIntoClient = confirm(
         `Parabéns pelo fechamento com ${account.razao_social}!\nDeseja promovê-lo a CLIENTE ATIVO da carteira (blindando contra contatos de outros operadores)?`
@@ -159,7 +270,7 @@ export default function DashboardKanbanPage() {
         await updateAccount(account.id, {
           status: "cliente_ativo",
           estagio: "fechado_ganho",
-          gerente_conta_nome: account.sdr_responsavel_nome || "Executivo Comercial",
+          gerente_conta_nome: account.sdr_responsavel_nome || getCurrentOperator(),
         });
         loadData();
         return;
@@ -184,7 +295,7 @@ export default function DashboardKanbanPage() {
     const currentIndex = stageOrder.indexOf(account.estagio || "prospeccao_inicial");
     if (currentIndex < stageOrder.length - 1) {
       const nextStage = stageOrder[currentIndex + 1];
-      
+
       if (nextStage === "fechado_ganho") {
         const turnIntoClient = confirm(
           "Parabéns! Deseja converter este lead imediatamente em CLIENTE ATIVO da carteira (blindando contra contatos de prospecção)?"
@@ -193,7 +304,7 @@ export default function DashboardKanbanPage() {
           await updateAccount(account.id, {
             status: "cliente_ativo",
             estagio: "fechado_ganho",
-            gerente_conta_nome: account.sdr_responsavel_nome || "Executivo Comercial",
+            gerente_conta_nome: account.sdr_responsavel_nome || getCurrentOperator(),
           });
           loadData();
           return;
@@ -209,7 +320,9 @@ export default function DashboardKanbanPage() {
   async function confirmDesqualification() {
     if (!desqualifyingAccount) return;
     if (detalheRecusa.trim().length < 15) {
-      alert("Por favor, descreva a justificativa da recusa com pelo menos 15 caracteres (ex: margem insuficiente, rota sem carga de retorno).");
+      alert(
+        "Por favor, descreva a justificativa da recusa com pelo menos 15 caracteres (ex: margem insuficiente, rota sem carga de retorno)."
+      );
       return;
     }
 
@@ -231,10 +344,12 @@ export default function DashboardKanbanPage() {
     if (!lead.telefone) return null;
     const cleanNumber = cleanCNPJ(lead.telefone);
     const phoneWithCountry = cleanNumber.startsWith("55") ? cleanNumber : `55${cleanNumber}`;
-    
-    const rotas = lead.rotas_principais?.length ? ` para as rotas ${lead.rotas_principais.join(", ")}` : "";
+
+    const rotas = lead.rotas_principais?.length
+      ? ` para as rotas ${lead.rotas_principais.join(", ")}`
+      : "";
     const contato = lead.contato_nome ? `Olá, ${lead.contato_nome}!` : "Olá!";
-    
+
     const text = `${contato} Sou da equipe comercial da CCargo Transportes Rodoviários. Identificamos a demanda logística da ${lead.razao_social}${rotas} e gostaríamos de apresentar nossa malha de frota e tarifas competitivas. Poderíamos conversar?`;
 
     return `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}`;
@@ -245,6 +360,11 @@ export default function DashboardKanbanPage() {
   const desqualificados = accounts.filter((a) => a.status === "desqualificado");
 
   const filteredLeads = leads.filter((l) => {
+    if (operatorFilter !== "TODOS") {
+      const resp = (l.sdr_responsavel_nome || "").toLowerCase();
+      if (!resp.includes(operatorFilter.toLowerCase())) return false;
+    }
+
     if (!searchFilter.trim()) return true;
     const term = searchFilter.toLowerCase();
     return (
@@ -257,7 +377,6 @@ export default function DashboardKanbanPage() {
 
   return (
     <div className="space-y-8">
-      
       {/* CABEÇALHO DO DASHBOARD & STATS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -265,11 +384,19 @@ export default function DashboardKanbanPage() {
             Gestão de Prospecção & Blindagem
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
-            Pipeline comercial e escudo ativo contra contatos duplicados em clientes e contas inviáveis.
+            Pipeline comercial, dossiê em PDF por cliente e fechamento mensal de contatos.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            href="/relatorios"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-[#F5F5F4] text-[#1C1917] border border-[#D6D3D1] text-sm font-semibold rounded-md shadow-subtle transition-all focus-ring"
+          >
+            <BarChart3 className="w-4 h-4 text-[#0D9488]" />
+            Relatórios & PDF do Mês
+          </Link>
+
           <Link
             href="/novo-lead"
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white text-sm font-semibold rounded-md shadow-sm transition-all focus-ring"
@@ -367,7 +494,10 @@ export default function DashboardKanbanPage() {
             {quickCnpj && (
               <button
                 type="button"
-                onClick={() => { setQuickCnpj(""); setQuickCollision(null); }}
+                onClick={() => {
+                  setQuickCnpj("");
+                  setQuickCollision(null);
+                }}
                 className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600"
               >
                 ✕
@@ -391,27 +521,44 @@ export default function DashboardKanbanPage() {
         )}
       </div>
 
-      {/* BARRA DE FILTRO & DICA DRAG AND DROP */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-[#78716C] absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Filtrar por empresa, CNPJ ou cidade..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-md border border-[#D6D3D1] bg-white text-xs focus-ring"
-          />
+      {/* BARRA DE FILTRO POR EMPRESA E POR OPERADORA */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-4 h-4 text-[#78716C] absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Filtrar por empresa (ex: Tauste), CNPJ ou cidade..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-md border border-[#D6D3D1] bg-white text-xs focus-ring"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white border border-[#D6D3D1] rounded-md px-2.5 py-1.5">
+            <UserCheck className="w-3.5 h-3.5 text-[#0D9488]" />
+            <span className="text-xs text-[#78716C]">Operadora:</span>
+            <select
+              value={operatorFilter}
+              onChange={(e) => setOperatorFilter(e.target.value)}
+              className="text-xs font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
+            >
+              <option value="TODOS">Todas as Operadoras</option>
+              {operators.map((op) => (
+                <option key={op.id} value={op.nome}>
+                  {op.nome}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 text-xs text-[#57534E]">
-          <span className="hidden md:inline-flex items-center gap-1 text-[#0D9488] font-medium bg-[#F0FDFA] px-2.5 py-1 rounded border border-[#99F6E4]">
+          <span className="hidden lg:inline-flex items-center gap-1 text-[#0D9488] font-medium bg-[#F0FDFA] px-2.5 py-1 rounded border border-[#99F6E4]">
             <GripVertical className="w-3.5 h-3.5" />
-            Arraste os cards para trocar de estágio
+            Arraste os cards ou clique em PDF para imprimir o dossiê
           </span>
-          <span className="font-semibold text-[#1C1917]">
-            {filteredLeads.length} oportunidades
-          </span>
+          <span className="font-semibold text-[#1C1917]">{filteredLeads.length} oportunidades</span>
         </div>
       </div>
 
@@ -429,18 +576,22 @@ export default function DashboardKanbanPage() {
               onDragOver={(e) => handleDragOver(e, stage.key)}
               onDragLeave={() => handleDragLeave(stage.key)}
               onDrop={(e) => handleDrop(e, stage.key)}
-              className={`rounded-lg border transition-all flex flex-col min-w-[310px] w-[310px] flex-shrink-0 max-h-[780px] ${
+              className={`rounded-lg border transition-all flex flex-col min-w-[315px] w-[315px] flex-shrink-0 max-h-[820px] ${
                 isOver
                   ? "bg-[#F0FDFA] border-[#0D9488] ring-2 ring-[#0D9488]/20"
                   : "bg-[#F5F5F4] border-[#E7E5E4]"
               }`}
             >
               {/* Stage Header */}
-              <div className={`p-3.5 border-b-2 ${stage.color} bg-white rounded-t-lg flex items-center justify-between`}>
+              <div
+                className={`p-3.5 border-b-2 ${stage.color} bg-white rounded-t-lg flex items-center justify-between`}
+              >
                 <h3 className="font-sans text-xs font-bold text-[#1C1917] tracking-tight">
                   {stage.title}
                 </h3>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold ${stage.badgeColor}`}>
+                <span
+                  className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold ${stage.badgeColor}`}
+                >
                   {stageLeads.length}
                 </span>
               </div>
@@ -448,9 +599,13 @@ export default function DashboardKanbanPage() {
               {/* Cards Container */}
               <div className="p-3 flex-1 overflow-y-auto space-y-3 scrollbar-none">
                 {stageLeads.length === 0 ? (
-                  <div className={`p-6 text-center text-xs rounded-md border border-dashed transition-colors ${
-                    isOver ? "border-[#0D9488] text-[#0D9488] bg-white" : "border-[#E7E5E4] text-[#A8A29E] italic"
-                  }`}>
+                  <div
+                    className={`p-6 text-center text-xs rounded-md border border-dashed transition-colors ${
+                      isOver
+                        ? "border-[#0D9488] text-[#0D9488] bg-white"
+                        : "border-[#E7E5E4] text-[#A8A29E] italic"
+                    }`}
+                  >
                     {isOver ? "Solte o card aqui" : "Nenhum lead nesta etapa"}
                   </div>
                 ) : (
@@ -492,8 +647,19 @@ export default function DashboardKanbanPage() {
                           <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0 mt-0.5" />
                         </div>
 
+                        {/* Resumo de Observações Importantes se houver (US-10) */}
+                        {lead.observacoes_importantes && (
+                          <div
+                            onClick={() => handleOpenLeadDetails(lead)}
+                            className="p-2 rounded bg-amber-50/80 border border-amber-200 text-[11px] text-amber-900 line-clamp-2 cursor-pointer"
+                            title={lead.observacoes_importantes}
+                          >
+                            <strong>📌 Obs:</strong> {lead.observacoes_importantes}
+                          </div>
+                        )}
+
                         {/* Dados Logísticos */}
-                        <div className="space-y-1.5 text-xs pt-1">
+                        <div className="space-y-1.5 text-xs pt-0.5">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {lead.tipo_carga && (
                               <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-medium">
@@ -517,23 +683,39 @@ export default function DashboardKanbanPage() {
                           {lead.tipos_veiculos && lead.tipos_veiculos.length > 0 && (
                             <div className="text-[10px] text-[#57534E] break-words">
                               Frota: {lead.tipos_veiculos.slice(0, 2).join(", ")}
-                              {lead.tipos_veiculos.length > 2 ? ` +${lead.tipos_veiculos.length - 2}` : ""}
+                              {lead.tipos_veiculos.length > 2
+                                ? ` +${lead.tipos_veiculos.length - 2}`
+                                : ""}
                             </div>
                           )}
                         </div>
 
-                        {/* Interlocutor & Contato com WhatsApp Direto */}
+                        {/* Interlocutor, Operadora & Contato */}
                         <div className="pt-2 border-t border-[#F5F5F4] flex items-center justify-between text-xs text-[#57534E]">
-                          <span className="font-medium truncate max-w-[150px]">
-                            {lead.contato_nome || "Contato a mapear"}
-                          </span>
+                          <div className="truncate max-w-[165px]">
+                            <span className="font-medium block truncate">
+                              {lead.contato_nome || "Contato a mapear"}
+                            </span>
+                            <span className="text-[10px] text-[#78716C] block truncate">
+                              👤 {lead.sdr_responsavel_nome || "Ana Paula (Comercial)"}
+                            </span>
+                          </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickPrintClientPDF(lead)}
+                              title="Gerar Relatório em PDF deste cliente"
+                              className="p-1.5 text-[#0F172A] hover:text-[#0D9488] hover:bg-slate-100 rounded transition-colors"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+
                             {lead.telefone && (
                               <a
                                 href={`tel:${cleanCNPJ(lead.telefone)}`}
                                 title="Ligar para contato"
-                                className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
+                                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
                               >
                                 <Phone className="w-3.5 h-3.5" />
                               </a>
@@ -545,7 +727,7 @@ export default function DashboardKanbanPage() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title="Conversar no WhatsApp"
-                                className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                                className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </a>
@@ -558,9 +740,10 @@ export default function DashboardKanbanPage() {
                           <button
                             type="button"
                             onClick={() => handleOpenLeadDetails(lead)}
-                            className="text-xs font-semibold text-[#0D9488] hover:underline"
+                            className="text-xs font-semibold text-[#0D9488] hover:underline flex items-center gap-1"
                           >
-                            Ver Histórico
+                            <FileText className="w-3 h-3" />
+                            <span>Ficha & Ligações</span>
                           </button>
 
                           <div className="flex items-center gap-1.5">
@@ -594,58 +777,114 @@ export default function DashboardKanbanPage() {
         })}
       </div>
 
-      {/* MODAL / DRAWER DE HISTÓRICO & TOUCHPOINTS (US-07) */}
+      {/* MODAL DE FICHA DO CLIENTE, OBSERVAÇÕES IMPORTANTES, PDF E HISTÓRICO DE LIGAÇÕES (US-07, US-10, US-11) */}
       {selectedLead && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg border border-[#E7E5E4] max-w-2xl w-full p-6 shadow-floating space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-[#E7E5E4] pb-3">
+          <div className="bg-white rounded-lg border border-[#E7E5E4] max-w-3xl w-full p-6 shadow-floating space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            {/* Header com Botão de Relatório PDF em Destaque */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-[#E7E5E4] pb-4">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-serif font-bold text-lg text-[#1C1917]">
                     {selectedLead.razao_social}
                   </h3>
                   <StatusBadge stage={selectedLead.estagio} size="sm" />
                 </div>
-                <div className="text-xs font-mono text-[#57534E] mt-0.5">
-                  CNPJ: {formatCNPJ(selectedLead.cnpj)}
+                <div className="text-xs font-mono text-[#57534E] mt-1 flex flex-wrap items-center gap-3">
+                  <span>CNPJ: {formatCNPJ(selectedLead.cnpj)}</span>
+                  <span>•</span>
+                  <span>
+                    Operadora: <strong>{selectedLead.sdr_responsavel_nome || "Ana Paula (Comercial)"}</strong>
+                  </span>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedLead(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 text-lg font-bold"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2 self-start">
+                <button
+                  type="button"
+                  onClick={() => generateClientDossierPDF(selectedLead, leadLogs)}
+                  className="px-3.5 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold rounded-md flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#0D9488]" />
+                  <span>Relatório do Cliente (PDF)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedLead(null)}
+                  className="text-slate-400 hover:text-slate-600 px-2 py-1 text-lg font-bold"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Dados Cadastrais & Perfil de Carga */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-[#FAFAF9] rounded-md border border-[#E7E5E4] text-xs">
               <div>
-                <strong className="text-slate-700">Decisor:</strong> {selectedLead.contato_nome || "Não informado"} ({selectedLead.contato_cargo || "Cargo n/d"})
+                <strong className="text-slate-700">Decisor:</strong>{" "}
+                {selectedLead.contato_nome || "Não informado"} (
+                {selectedLead.contato_cargo || "Cargo n/d"})
               </div>
               <div>
-                <strong className="text-slate-700">Telefone:</strong> {selectedLead.telefone || "Não informado"}
+                <strong className="text-slate-700">Telefone:</strong>{" "}
+                {selectedLead.telefone || "Não informado"}
               </div>
               <div>
-                <strong className="text-slate-700">Modalidade:</strong> {selectedLead.tipo_carga || "FTL"}
+                <strong className="text-slate-700">Modalidade:</strong>{" "}
+                {selectedLead.tipo_carga || "Lotação (FTL)"}
               </div>
               <div>
-                <strong className="text-slate-700">Cidade/UF:</strong> {selectedLead.cidade}/{selectedLead.uf}
+                <strong className="text-slate-700">Cidade/UF:</strong> {selectedLead.cidade || "—"}
+                /{selectedLead.uf || "—"}
               </div>
               {selectedLead.rotas_principais && selectedLead.rotas_principais.length > 0 && (
                 <div className="sm:col-span-2">
-                  <strong className="text-slate-700">Rotas:</strong> {selectedLead.rotas_principais.join(", ")}
+                  <strong className="text-slate-700">Rotas:</strong>{" "}
+                  {selectedLead.rotas_principais.join(", ")}
                 </div>
               )}
               {selectedLead.tipos_veiculos && selectedLead.tipos_veiculos.length > 0 && (
                 <div className="sm:col-span-2">
-                  <strong className="text-slate-700">Veículos:</strong> {selectedLead.tipos_veiculos.join(", ")}
+                  <strong className="text-slate-700">Veículos:</strong>{" "}
+                  {selectedLead.tipos_veiculos.join(", ")}
                 </div>
               )}
+            </div>
+
+            {/* BLOCO EDITÁVEL: OBSERVAÇÕES IMPORTANTES E RESTRIÇÕES DO CLIENTE (US-10) */}
+            <div className="p-4 bg-amber-50/60 border border-amber-300 rounded-md space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="font-serif font-bold text-xs uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-amber-700" />
+                  Observações Importantes do Cliente (O que quer / O que não carrega)
+                </label>
+                {notesSavedSuccess && (
+                  <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Salvo com sucesso!
+                  </span>
+                )}
+              </div>
+
+              <textarea
+                rows={3}
+                placeholder="Anote aqui informações permanentes do cliente (ex: Só carrega paletizado, não carrega carga batida, exige veículo Sider, janela de descarga das 08h às 12h...). Isso sai em destaque no PDF!"
+                value={editObservacoes}
+                onChange={(e) => setEditObservacoes(e.target.value)}
+                className="w-full px-3 py-2 rounded border border-amber-300 bg-white text-xs text-[#1C1917] focus-ring"
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveObservacoes}
+                  disabled={isSavingNotes}
+                  className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold rounded flex items-center gap-1.5 transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingNotes ? "Salvando..." : "Salvar Observações do Cliente"}</span>
+                </button>
+              </div>
             </div>
 
             {/* Ação Rápida WhatsApp */}
@@ -668,18 +907,28 @@ export default function DashboardKanbanPage() {
             )}
 
             {/* Form de Registro de Contato / Touchpoint */}
-            <form onSubmit={handleAddContactLog} className="space-y-3 p-4 bg-[#F5F5F4] rounded-md border border-[#E7E5E4]">
-              <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#1C1917] flex items-center gap-1.5">
-                <Plus className="w-3.5 h-3.5 text-[#0D9488]" />
-                Registrar Nova Interação Comercial
-              </h4>
+            <form
+              onSubmit={handleAddContactLog}
+              className="space-y-3 p-4 bg-[#F5F5F4] rounded-md border border-[#E7E5E4]"
+            >
+              <div className="flex items-center justify-between">
+                <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#1C1917] flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-[#0D9488]" />
+                  Registrar Nova Tentativa de Contato / Ligação
+                </h4>
+                <span className="text-[11px] text-[#57534E]">
+                  Assinado por: <strong>{getCurrentOperator()}</strong>
+                </span>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#57534E] mb-1">Canal</label>
+                  <label className="block text-[11px] font-semibold text-[#57534E] mb-1">
+                    Canal
+                  </label>
                   <select
                     value={novoCanal}
-                    onChange={(e) => setNovoCanal(e.target.value as any)}
+                    onChange={(e) => setNovoCanal(e.target.value as ContactLog["tipo_contato"])}
                     className="w-full px-2.5 py-1.5 rounded border border-[#D6D3D1] bg-white text-xs focus-ring"
                   >
                     <option value="telefone">📞 Ligação Telefônica</option>
@@ -690,10 +939,12 @@ export default function DashboardKanbanPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#57534E] mb-1">Resultado do Contato</label>
+                  <label className="block text-[11px] font-semibold text-[#57534E] mb-1">
+                    Resultado do Contato
+                  </label>
                   <select
                     value={novoResultado}
-                    onChange={(e) => setNovoResultado(e.target.value as any)}
+                    onChange={(e) => setNovoResultado(e.target.value as ContactLog["resultado"])}
                     className="w-full px-2.5 py-1.5 rounded border border-[#D6D3D1] bg-white text-xs focus-ring"
                   >
                     <option value="sucesso">✅ Contato com Sucesso (Falou com decisor)</option>
@@ -705,11 +956,12 @@ export default function DashboardKanbanPage() {
 
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-semibold text-[#57534E] mb-1">
-                    Resumo da Conversa <span className="text-red-500">*</span>
+                    O que foi falado com o contato / Motivo de não atender{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     rows={2}
-                    placeholder="Ex: Liguei para Carlos. Ele confirmou que tem 15 cargas/mês na rota SP-PR e pediu cotação de carreta Sider até sexta."
+                    placeholder="Ex: Liguei às 10h, caiu na caixa postal. / Ou: Falei com Henrique, pediu cotação para rota Marília-SP com carreta Sider."
                     value={novoResumo}
                     onChange={(e) => setNovoResumo(e.target.value)}
                     required
@@ -722,18 +974,28 @@ export default function DashboardKanbanPage() {
                 <button
                   type="submit"
                   disabled={isSavingLog || !novoResumo.trim()}
-                  className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] disabled:bg-slate-300 text-white text-xs font-semibold rounded shadow-sm transition-colors"
+                  className="px-4 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] disabled:bg-slate-300 text-white text-xs font-semibold rounded shadow-sm transition-colors"
                 >
-                  {isSavingLog ? "Salvando..." : "Salvar no Histórico"}
+                  {isSavingLog ? "Salvando..." : "Registrar Contato no Histórico"}
                 </button>
               </div>
             </form>
 
             {/* Linha do Tempo de Touchpoints */}
             <div className="space-y-3">
-              <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#57534E]">
-                Linha do Tempo de Tentativas ({leadLogs.length})
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#57534E]">
+                  Histórico de Tentativas e Ligações ({leadLogs.length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => generateClientDossierPDF(selectedLead, leadLogs)}
+                  className="text-xs font-semibold text-[#0D9488] hover:underline flex items-center gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Imprimir Histórico Completo em PDF
+                </button>
+              </div>
 
               {leadLogs.length === 0 ? (
                 <div className="p-4 text-center text-xs text-[#A8A29E] italic border border-dashed rounded">
@@ -742,26 +1004,44 @@ export default function DashboardKanbanPage() {
               ) : (
                 <div className="space-y-2.5">
                   {leadLogs.map((log) => (
-                    <div key={log.id} className="p-3 bg-white rounded border border-[#E7E5E4] text-xs space-y-1">
-                      <div className="flex items-center justify-between text-[11px] text-[#78716C]">
+                    <div
+                      key={log.id}
+                      className="p-3 bg-white rounded border border-[#E7E5E4] text-xs space-y-1"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#78716C]">
                         <span className="font-semibold text-slate-800 flex items-center gap-1.5">
                           {log.tipo_contato === "telefone" && "📞 Ligação"}
                           {log.tipo_contato === "whatsapp" && "💬 WhatsApp"}
                           {log.tipo_contato === "email" && "✉️ E-mail"}
                           {log.tipo_contato === "reuniao" && "🤝 Reunião"}
-                          <span className={`px-1.5 py-0.2 rounded font-normal text-[10px] ${
-                            log.resultado === "sucesso" ? "bg-emerald-100 text-emerald-800" :
-                            log.resultado === "sem_resposta" ? "bg-slate-100 text-slate-700" :
-                            log.resultado === "reagendado" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
-                          }`}>
-                            {log.resultado === "sucesso" ? "Sucesso" : log.resultado === "sem_resposta" ? "Sem Resposta" : log.resultado}
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${
+                              log.resultado === "sucesso"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : log.resultado === "sem_resposta"
+                                ? "bg-slate-100 text-slate-700"
+                                : log.resultado === "reagendado"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {log.resultado === "sucesso"
+                              ? "Contato com Sucesso"
+                              : log.resultado === "sem_resposta"
+                              ? "Sem Resposta / Caixa Postal"
+                              : log.resultado === "reagendado"
+                              ? "Reagendado"
+                              : "Sem Interesse"}
+                          </span>
+                          <span className="text-[#57534E] font-normal">
+                            • por <strong>{log.usuario_nome}</strong>
                           </span>
                         </span>
-                        <span>{new Date(log.created_at).toLocaleString("pt-BR")}</span>
+                        <span className="font-mono">
+                          {new Date(log.created_at).toLocaleString("pt-BR")}
+                        </span>
                       </div>
-                      <p className="text-slate-800 pt-0.5">
-                        {log.resumo}
-                      </p>
+                      <p className="text-slate-800 pt-0.5">{log.resumo}</p>
                     </div>
                   ))}
                 </div>
@@ -788,7 +1068,8 @@ export default function DashboardKanbanPage() {
             </div>
 
             <div className="p-3 bg-[#FAFAF9] rounded border border-[#E7E5E4] text-xs">
-              <strong>Empresa:</strong> {desqualifyingAccount.razao_social} ({formatCNPJ(desqualifyingAccount.cnpj)})
+              <strong>Empresa:</strong> {desqualifyingAccount.razao_social} (
+              {formatCNPJ(desqualifyingAccount.cnpj)})
             </div>
 
             <div className="space-y-3">
@@ -801,18 +1082,29 @@ export default function DashboardKanbanPage() {
                   onChange={(e) => setMotivoRecusa(e.target.value as DisqualificationReason)}
                   className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] bg-white text-xs focus-ring"
                 >
-                  <option value="baixa_rentabilidade">Baixa Rentabilidade (Frete inviável / abaixo da margem)</option>
-                  <option value="rota_incompativel">Rota Incompatível (Sem carga de retorno / praça não atendida)</option>
-                  <option value="inadimplencia_historica">Inadimplência / Restrição Financeira</option>
-                  <option value="incompatibilidade_veiculo">Incompatibilidade de Veículo (Tipo de carroceria indisponível)</option>
-                  <option value="tabela_abaixo_piso">Tabela de Preço abaixo do piso mínimo</option>
+                  <option value="baixa_rentabilidade">
+                    Baixa Rentabilidade (Frete inviável / abaixo da margem)
+                  </option>
+                  <option value="rota_incompativel">
+                    Rota Incompatível (Sem carga de retorno / praça não atendida)
+                  </option>
+                  <option value="inadimplencia_historica">
+                    Inadimplência / Restrição Financeira
+                  </option>
+                  <option value="incompatibilidade_veiculo">
+                    Incompatibilidade de Veículo (Tipo de carroceria indisponível)
+                  </option>
+                  <option value="tabela_abaixo_piso">
+                    Tabela de Preço abaixo do piso mínimo
+                  </option>
                   <option value="outro">Outro motivo operacional</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#57534E] mb-1">
-                  Justificativa Detalhada <span className="text-red-500">* (mín. 15 caracteres)</span>
+                  Justificativa Detalhada{" "}
+                  <span className="text-red-500">* (mín. 15 caracteres)</span>
                 </label>
                 <textarea
                   rows={3}

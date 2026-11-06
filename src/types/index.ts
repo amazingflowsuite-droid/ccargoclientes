@@ -52,6 +52,9 @@ export interface Account {
   tipos_veiculos?: string[];
   volume_mensal_estimado?: string;
   
+  // Observações Estratégicas e Restrições do Cliente (US-10)
+  observacoes_importantes?: string;
+  
   // Desqualificação / Proteção
   motivo_desqualificacao?: DisqualificationReason;
   detalhe_desqualificacao?: string;
@@ -59,7 +62,7 @@ export interface Account {
   
   // Responsáveis
   gerente_conta_nome?: string; // Se for cliente ativo
-  sdr_responsavel_nome?: string; // Se for lead
+  sdr_responsavel_nome?: string; // Operadora responsável pela prospecção
   
   created_at: string;
   updated_at: string;
@@ -74,6 +77,12 @@ export interface ContactLog {
   proximo_contato?: string;
   usuario_nome: string;
   created_at: string;
+}
+
+export interface OperatorUser {
+  id: string;
+  nome: string;
+  cargo: string;
 }
 
 export interface CollisionCheckResult {
@@ -99,4 +108,3 @@ export interface BrasilAPICompanyResponse {
   cep: string;
   ddd_telefone_1: string;
 }
-
