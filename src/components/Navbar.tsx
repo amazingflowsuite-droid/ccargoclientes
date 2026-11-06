@@ -17,11 +17,15 @@ import {
 } from "lucide-react";
 import { getAuthenticatedUser, logoutUser } from "@/lib/store";
 import { AppUser } from "@/types";
+import { CCargoLogo } from "@/components/ui/CCargoLogo";
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const [authUser, setAuthUser] = useState<AppUser | null>(null);
+  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
+    if (typeof window !== "undefined") return getAuthenticatedUser();
+    return null;
+  });
 
   useEffect(() => {
     const syncAuth = () => {
@@ -50,30 +54,15 @@ export const Navbar: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 bg-[#FAFAF9]/95 backdrop-blur-md border-b border-[#E7E5E4]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
-        {/* Brand */}
+        {/* Brand com Logotipo Oficial CCargo (US-15 & US-16) */}
         <div className="flex items-center gap-3">
-          <Link href={authUser ? "/" : "/login"} className="flex items-center gap-2.5 group">
-            <div className="w-10 h-10 rounded-md bg-[#0F172A] flex items-center justify-center text-white shadow-sm group-hover:bg-[#1E293B] transition-colors">
-              <Truck className="w-5 h-5 text-[#0D9488]" />
-            </div>
-            <div>
-              <span className="font-serif text-lg font-bold text-[#1C1917] tracking-tight block leading-tight">
-                CCargo
-              </span>
-              <span className="text-[10px] font-sans font-medium text-[#57534E] tracking-wider uppercase">
-                Prospecção & Blindagem
-              </span>
-            </div>
+          <Link href={authUser ? "/" : "/login"} className="flex items-center group">
+            <CCargoLogo size="sm" showSubtitle={true} subtitleText="Prospecção" />
           </Link>
-
-          <div className="hidden xl:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded bg-[#ECFDF5] border border-[#A7F3D0] text-[#047857] text-xs font-medium">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#059669]" />
-            <span>Escudo Anti-Duplicidade Ativo</span>
-          </div>
         </div>
 
         {/* Navigation links & Logged-in User Profile */}
-        {authUser && pathname !== "/login" ? (
+        {authUser && pathname !== "/login" && !pathname?.startsWith("/definir-senha") ? (
           <div className="flex items-center gap-1.5 sm:gap-2.5">
             <nav className="flex items-center gap-1">
               <Link href="/" className={navLinkClass("/")}>

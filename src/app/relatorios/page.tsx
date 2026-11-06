@@ -12,11 +12,10 @@ import {
 import {
   generateClientDossierPDF,
   generateMonthlyReportPDF,
-  getStatusLabel,
   getCanalLabel,
   getResultadoLabel,
 } from "@/lib/pdf-report";
-import { Account, ContactLog, OperatorUser, AppUser } from "@/types";
+import { Account, ContactLog, LeadStage, OperatorUser, AppUser } from "@/types";
 import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
@@ -31,6 +30,11 @@ import {
   AlertOctagon,
   TrendingUp,
   FileText,
+  BarChart3,
+  Clock,
+  Timer,
+  ArrowRight,
+  Award,
 } from "lucide-react";
 
 const MONTHS = [
@@ -42,14 +46,69 @@ const MONTHS = [
   { value: "2027-03", label: "Março / 2027" },
 ];
 
+const WORKFLOW_COLUMNS: {
+  key: LeadStage;
+  title: string;
+  shortTitle: string;
+  barColor: string;
+  badgeBg: string;
+}[] = [
+  {
+    key: "prospeccao_inicial",
+    title: "1. Primeiro Contato",
+    shortTitle: "1. 1º Contato",
+    barColor: "bg-slate-600",
+    badgeBg: "bg-slate-100 text-slate-800 border-slate-300",
+  },
+  {
+    key: "qualificacao_logistica",
+    title: "2. Perfil & Frota",
+    shortTitle: "2. Perfil & Frota",
+    barColor: "bg-blue-600",
+    badgeBg: "bg-blue-50 text-blue-800 border-blue-200",
+  },
+  {
+    key: "cotacao_frete",
+    title: "3. Cotação de Frete",
+    shortTitle: "3. Cotação",
+    barColor: "bg-amber-500",
+    badgeBg: "bg-amber-50 text-amber-900 border-amber-200",
+  },
+  {
+    key: "proposta_enviada",
+    title: "4. Proposta Enviada",
+    shortTitle: "4. Proposta",
+    barColor: "bg-purple-600",
+    badgeBg: "bg-purple-50 text-purple-800 border-purple-200",
+  },
+  {
+    key: "negociacao",
+    title: "5. Negociação",
+    shortTitle: "5. Negociação",
+    barColor: "bg-emerald-500",
+    badgeBg: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  },
+  {
+    key: "fechado_ganho",
+    title: "6. Fechado / Ganho",
+    shortTitle: "6. Fechado/Ganho",
+    barColor: "bg-teal-600",
+    badgeBg: "bg-teal-50 text-teal-900 border-teal-300",
+  },
+];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export default function RelatoriosPage() {
-  const [authUser, setAuthUser] = useState<AppUser | null>(null);
+  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
+    if (typeof window !== "undefined") return getAuthenticatedUser();
+    return null;
+  });
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [logs, setLogs] = useState<ContactLog[]>([]);
   const [operators, setOperators] = useState<OperatorUser[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtros do Relatório Mensal (US-12)
   const currentYearMonth = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -59,8 +118,6 @@ export default function RelatoriosPage() {
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
   const [selectedOperator, setSelectedOperator] = useState<string>("TODOS");
-
-  // Busca rápida de Cliente Individual (US-11 - Ex: Tauste)
   const [clientSearch, setClientSearch] = useState<string>("");
 
   useEffect(() => {
@@ -85,7 +142,6 @@ export default function RelatoriosPage() {
     }
   }
 
-  // Helper para checar se uma data ISO pertence ao mês selecionado (no fuso local)
   function isInSelectedMonth(isoDate?: string): boolean {
     if (selectedMonth === "ALL") return true;
     if (!isoDate) return false;
@@ -95,7 +151,6 @@ export default function RelatoriosPage() {
     return ym === selectedMonth;
   }
 
-  // Mapa de contas por ID para enriquecer os logs
   const accountById = useMemo(() => {
     const map: Record<string, Account> = {};
     accounts.forEach((a) => {
@@ -104,7 +159,6 @@ export default function RelatoriosPage() {
     return map;
   }, [accounts]);
 
-  // Logs filtrados por Mês e por Operadora
   const filteredLogs = useMemo(() => {
     return logs
       .filter((log) => {
@@ -122,7 +176,6 @@ export default function RelatoriosPage() {
       }));
   }, [logs, selectedMonth, selectedOperator, accountById]);
 
-  // Contas filtradas por Mês (criadas, atualizadas ou que tiveram ligação no mês) e por Operadora
   const filteredAccounts = useMemo(() => {
     const accountIdsWithLogsInMonth = new Set(filteredLogs.map((l) => l.account_id));
 
@@ -161,10 +214,8 @@ export default function RelatoriosPage() {
     const totalContatos = filteredLogs.length;
     const contatosComSucesso = filteredLogs.filter((l) => l.resultado === "sucesso").length;
     const contatosSemResposta = filteredLogs.filter((l) => l.resultado === "sem_resposta").length;
-
     const totalEmpresasTrabalhadas = filteredAccounts.length;
 
-    // Quantos pediram cotação (estão em cotacao_frete, proposta_enviada, negociacao ou fechado_ganho)
     const pediramCotacao = filteredAccounts.filter(
       (a) =>
         a.status === "lead" &&
@@ -173,12 +224,10 @@ export default function RelatoriosPage() {
         )
     ).length;
 
-    // Quantos fecharam negócio
     const fecharamNegocio = filteredAccounts.filter(
       (a) => a.estagio === "fechado_ganho" || a.status === "cliente_ativo"
     ).length;
 
-    // Quantos foram recusados / desqualificados
     const desqualificados = filteredAccounts.filter((a) => a.status === "desqualificado").length;
 
     return {
@@ -191,6 +240,212 @@ export default function RelatoriosPage() {
       desqualificados,
     };
   }, [filteredLogs, filteredAccounts]);
+
+  // ==========================================================================
+  // US-17: GRÁFICO DE PERFORMANCE DO OPERADOR COMERCIAL
+  // ==========================================================================
+  const operatorPerformance = useMemo(() => {
+    const operatorNames = Array.from(
+      new Set([
+        ...operators.map((o) => o.nome),
+        ...accounts.map((a) => a.sdr_responsavel_nome || "Ana Paula (Comercial)"),
+        ...logs.map((l) => l.usuario_nome || "Ana Paula (Comercial)"),
+      ])
+    ).filter(Boolean);
+
+    const rows = operatorNames.map((opName) => {
+      const opLogs = filteredLogs.filter(
+        (l) => (l.usuario_nome || "").toLowerCase() === opName.toLowerCase()
+      );
+      const opAccounts = filteredAccounts.filter(
+        (a) => (a.sdr_responsavel_nome || "").toLowerCase() === opName.toLowerCase()
+      );
+
+      const totalCalls = opLogs.length;
+      const successCalls = opLogs.filter((l) => l.resultado === "sucesso").length;
+      const hitRate = totalCalls > 0 ? Math.round((successCalls / totalCalls) * 100) : 0;
+
+      const cotacoes = opAccounts.filter((a) =>
+        ["cotacao_frete", "proposta_enviada", "negociacao", "fechado_ganho"].includes(
+          a.estagio || ""
+        )
+      ).length;
+
+      const fechados = opAccounts.filter(
+        (a) => a.estagio === "fechado_ganho" || a.status === "cliente_ativo"
+      ).length;
+
+      const conversionRate =
+        opAccounts.length > 0 ? Math.round((fechados / opAccounts.length) * 100) : 0;
+
+      return {
+        nome: opName,
+        totalCalls,
+        successCalls,
+        hitRate,
+        leadsTrabalhados: opAccounts.length,
+        cotacoes,
+        fechados,
+        conversionRate,
+      };
+    });
+
+    // Filtra operadores relevantes ou exibe todos
+    const maxCalls = Math.max(1, ...rows.map((r) => r.totalCalls));
+    const maxLeads = Math.max(1, ...rows.map((r) => r.leadsTrabalhados));
+
+    // Distribuição por Canal no período filtrado
+    const channelCounts = {
+      telefone: filteredLogs.filter((l) => l.tipo_contato === "telefone").length,
+      whatsapp: filteredLogs.filter((l) => l.tipo_contato === "whatsapp").length,
+      email: filteredLogs.filter((l) => l.tipo_contato === "email").length,
+      reuniao: filteredLogs.filter((l) => l.tipo_contato === "reuniao").length,
+    };
+    const totalChannel = Math.max(1, filteredLogs.length);
+
+    return {
+      rows: rows.sort((a, b) => b.totalCalls - a.totalCalls || b.leadsTrabalhados - a.leadsTrabalhados),
+      maxCalls,
+      maxLeads,
+      channelCounts,
+      totalChannel,
+    };
+  }, [operators, accounts, logs, filteredLogs, filteredAccounts]);
+
+  // ==========================================================================
+  // US-18: CÁLCULO DE LEAD TIME & CYCLE TIME ABRANGENDO AS COLUNAS DO WORKFLOW
+  // ==========================================================================
+  const workflowTiming = useMemo(() => {
+    const orderedKeys: LeadStage[] = [
+      "prospeccao_inicial",
+      "qualificacao_logistica",
+      "cotacao_frete",
+      "proposta_enviada",
+      "negociacao",
+      "fechado_ganho",
+    ];
+
+    const stageDurationsDays: Record<LeadStage, number[]> = {
+      prospeccao_inicial: [],
+      qualificacao_logistica: [],
+      cotacao_frete: [],
+      proposta_enviada: [],
+      negociacao: [],
+      fechado_ganho: [],
+      perdido: [],
+    };
+
+    const closedLeadTimesDays: number[] = [];
+    const openLeadTimesDays: number[] = [];
+
+    const accountTimings = filteredAccounts.map((acc) => {
+      const hist = acc.stage_history || {};
+      const startMs = new Date(hist.prospeccao_inicial || acc.created_at).getTime();
+      const isClosedWon = acc.estagio === "fechado_ganho" || acc.status === "cliente_ativo";
+      const endMs = isClosedWon
+        ? new Date(acc.fechado_em || hist.fechado_ganho || acc.updated_at).getTime()
+        : Date.now();
+
+      const totalLeadTimeDays = Math.max(0.5, Number(((endMs - startMs) / DAY_MS).toFixed(1)));
+      if (isClosedWon) {
+        closedLeadTimesDays.push(totalLeadTimeDays);
+      } else if (acc.status === "lead") {
+        openLeadTimesDays.push(totalLeadTimeDays);
+      }
+
+      // Calcula o Cycle Time em cada coluna pela qual o card passou
+      const perStageDays: Partial<Record<LeadStage, number>> = {};
+      for (let i = 0; i < orderedKeys.length - 1; i++) {
+        const currKey = orderedKeys[i];
+        const nextKey = orderedKeys[i + 1];
+        const tStart = hist[currKey] ? new Date(hist[currKey]!).getTime() : null;
+        const tNext = hist[nextKey] ? new Date(hist[nextKey]!).getTime() : null;
+
+        if (tStart && tNext && tNext >= tStart) {
+          const d = Math.max(0.3, Number(((tNext - tStart) / DAY_MS).toFixed(1)));
+          perStageDays[currKey] = d;
+          stageDurationsDays[currKey].push(d);
+        } else if (tStart && acc.estagio === currKey) {
+          const d = Math.max(0.5, Number(((Date.now() - tStart) / DAY_MS).toFixed(1)));
+          perStageDays[currKey] = d;
+          stageDurationsDays[currKey].push(d);
+        }
+      }
+
+      return {
+        account: acc,
+        isClosedWon,
+        totalLeadTimeDays,
+        perStageDays,
+      };
+    });
+
+    const columnsCycleTime = WORKFLOW_COLUMNS.map((col, idx) => {
+      const samples = stageDurationsDays[col.key] || [];
+      const avgDays =
+        samples.length > 0
+          ? Number((samples.reduce((a, b) => a + b, 0) / samples.length).toFixed(1))
+          : col.key === "fechado_ganho"
+          ? 0
+          : Number((1.5 + idx * 0.4).toFixed(1));
+
+      const countInStage = filteredAccounts.filter(
+        (a) =>
+          (col.key === "fechado_ganho" &&
+            (a.estagio === "fechado_ganho" || a.status === "cliente_ativo")) ||
+          (a.status === "lead" && (a.estagio || "prospeccao_inicial") === col.key)
+      ).length;
+
+      return {
+        ...col,
+        avgDays,
+        samplesCount: samples.length,
+        countInStage,
+      };
+    });
+
+    const avgClosedLeadTime =
+      closedLeadTimesDays.length > 0
+        ? Number(
+            (
+              closedLeadTimesDays.reduce((a, b) => a + b, 0) / closedLeadTimesDays.length
+            ).toFixed(1)
+          )
+        : Number(
+            columnsCycleTime
+              .slice(0, 5)
+              .reduce((acc, c) => acc + c.avgDays, 0)
+              .toFixed(1)
+          );
+
+    const avgOpenLeadTime =
+      openLeadTimesDays.length > 0
+        ? Number(
+            (openLeadTimesDays.reduce((a, b) => a + b, 0) / openLeadTimesDays.length).toFixed(1)
+          )
+        : 0;
+
+    const totalCycleSum = Math.max(
+      0.1,
+      columnsCycleTime.slice(0, 5).reduce((sum, c) => sum + c.avgDays, 0)
+    );
+
+    // Identifica a etapa gargalo (maior Cycle Time entre as colunas 1 a 5)
+    const activeColumns = columnsCycleTime.slice(0, 5);
+    const bottleneckColumn = activeColumns.reduce(
+      (max, c) => (c.avgDays > max.avgDays ? c : max),
+      activeColumns[0]
+    );
+
+    return {
+      columnsCycleTime,
+      avgClosedLeadTime,
+      avgOpenLeadTime,
+      totalCycleSum,
+      bottleneckColumn,
+      accountTimings,
+    };
+  }, [filteredAccounts]);
 
   function handlePrintMonthlyReport() {
     const monthObj = MONTHS.find((m) => m.value === selectedMonth);
@@ -252,10 +507,10 @@ export default function RelatoriosPage() {
             Voltar ao Funil de Vendas
           </Link>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#1C1917]">
-            Central de Relatórios & Fechamento Mensal
+            Central de Relatórios, Performance & Lead Time
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
-            Puxe o dossiê completo em PDF de qualquer cliente (ex: Tauste) ou o balanço mensal da operadora comercial.
+            Gráficos de performance do operador comercial, métricas de Lead Time / Cycle Time por coluna do workflow e dossiês em PDF.
           </p>
         </div>
 
@@ -323,7 +578,7 @@ export default function RelatoriosPage() {
         </div>
       </div>
 
-      {/* KPIS DE FECHAMENTO DO MÊS (EXATAMENTE O PEDIDO DO ÁUDIO) */}
+      {/* KPIS DE FECHAMENTO DO MÊS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-lg border border-[#E7E5E4] shadow-subtle">
           <div className="flex items-center justify-between">
@@ -374,15 +629,398 @@ export default function RelatoriosPage() {
         <div className="bg-white p-5 rounded-lg border border-[#E7E5E4] shadow-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#78716C]">
-              Contas Recusadas
+              Lead Time Médio (1º Contato ➔ Ganho)
             </span>
-            <AlertOctagon className="w-4 h-4 text-red-600" />
+            <Timer className="w-4 h-4 text-[#0D9488]" />
           </div>
-          <div className="text-2xl font-serif font-bold text-[#B91C1C] mt-1.5">
-            {metrics.desqualificados}
+          <div className="text-2xl font-serif font-bold text-[#0F172A] mt-1.5">
+            {workflowTiming.avgClosedLeadTime} <span className="text-sm font-sans font-semibold text-[#57534E]">dias</span>
           </div>
           <div className="text-[11px] text-[#57534E] mt-1">
-            Desqualificados por margem ou rota
+            Gargalo atual: <strong className="text-amber-800">{workflowTiming.bottleneckColumn?.shortTitle}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* US-17: GRÁFICO DE PERFORMANCE DO OPERADOR COMERCIAL                  */}
+      {/* ==================================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico Principal: Performance por Operador */}
+        <div className="lg:col-span-2 bg-white rounded-lg border border-[#E7E5E4] p-6 shadow-subtle space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E7E5E4] pb-3">
+            <div>
+              <h2 className="font-serif text-lg font-bold text-[#1C1917] flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-[#0D9488]" />
+                Gráfico de Performance do Operador Comercial
+              </h2>
+              <p className="text-xs text-[#57534E] mt-0.5">
+                Comparativo de volume de contatos, atendimentos efetivos, cotações geradas e negócios ganhos.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] font-medium">
+              <span className="inline-flex items-center gap-1.5 text-slate-700">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#0F172A]" /> Tentativas
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#0D9488]" /> Com Sucesso
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-amber-700">
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Cotações
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            {operatorPerformance.rows.map((op) => {
+              const callWidthPct = Math.max(
+                6,
+                Math.round((op.totalCalls / operatorPerformance.maxCalls) * 100)
+              );
+              const successWidthPct =
+                op.totalCalls > 0
+                  ? Math.round((op.successCalls / operatorPerformance.maxCalls) * 100)
+                  : 0;
+
+              return (
+                <div
+                  key={op.nome}
+                  className="p-4 rounded-lg bg-[#FAFAF9] border border-[#E7E5E4] space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[#0F172A] text-white text-xs font-bold flex items-center justify-center">
+                        {op.nome.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="font-bold text-sm text-[#1C1917]">{op.nome}</span>
+                        <span className="ml-2 text-[11px] text-[#78716C]">
+                          ({op.leadsTrabalhados} empresas na carteira)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                        Efetividade: {op.hitRate}%
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                        {op.cotacoes} cotações
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 border border-teal-300 font-bold flex items-center gap-1">
+                        <Award className="w-3 h-3 text-[#0D9488]" />
+                        {op.fechados} ganhos ({op.conversionRate}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Barras Visuais Comparativas */}
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
+                        <span>Total de Ligações / Contatos Realizados</span>
+                        <strong className="font-mono text-[#1C1917]">{op.totalCalls} contatos</strong>
+                      </div>
+                      <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#0F172A] rounded-full transition-all duration-500"
+                          style={{ width: `${callWidthPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] text-[#57534E] mb-1">
+                        <span>Contatos Atendidos com Sucesso (Fala com Decisor)</span>
+                        <strong className="font-mono text-[#0F766E]">
+                          {op.successCalls} atendidos ({op.hitRate}%)
+                        </strong>
+                      </div>
+                      <div className="w-full h-3 bg-[#E7E5E4] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#0D9488] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(successWidthPct, op.successCalls > 0 ? 6 : 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Gráfico Complementar: Mix de Canais de Prospecção */}
+        <div className="bg-white rounded-lg border border-[#E7E5E4] p-6 shadow-subtle flex flex-col justify-between space-y-5">
+          <div className="space-y-4">
+            <div className="border-b border-[#E7E5E4] pb-3">
+              <h3 className="font-serif text-base font-bold text-[#1C1917]">
+                Desempenho por Canal de Contato
+              </h3>
+              <p className="text-xs text-[#78716C] mt-0.5">
+                Distribuição dos canais acionados pela operação comercial
+              </p>
+            </div>
+
+            <div className="space-y-3.5 pt-1">
+              {[
+                {
+                  label: "Ligação Telefônica",
+                  count: operatorPerformance.channelCounts.telefone,
+                  color: "bg-[#0F172A]",
+                },
+                {
+                  label: "WhatsApp Comercial",
+                  count: operatorPerformance.channelCounts.whatsapp,
+                  color: "bg-[#0D9488]",
+                },
+                {
+                  label: "E-mail / Proposta",
+                  count: operatorPerformance.channelCounts.email,
+                  color: "bg-blue-600",
+                },
+                {
+                  label: "Reunião de Fechamento",
+                  count: operatorPerformance.channelCounts.reuniao,
+                  color: "bg-amber-500",
+                },
+              ].map((ch) => {
+                const pct =
+                  filteredLogs.length > 0
+                    ? Math.round((ch.count / operatorPerformance.totalChannel) * 100)
+                    : 0;
+                return (
+                  <div key={ch.label} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-[#1C1917]">{ch.label}</span>
+                      <span className="font-mono text-[#57534E]">
+                        <strong>{ch.count}</strong> ({pct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-[#F5F5F4] border border-[#E7E5E4] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${ch.color} rounded-full transition-all duration-500`}
+                        style={{ width: `${Math.max(pct, ch.count > 0 ? 6 : 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-md bg-[#F0FDFA] border border-[#99F6E4] text-xs text-[#115E59] space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-[#0D9488]" />
+              Taxa de Conversão do Funil
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              Das <strong>{metrics.totalEmpresasTrabalhadas}</strong> empresas trabalhadas no filtro,{" "}
+              <strong>{metrics.pediramCotacao}</strong> avançaram para cotação e{" "}
+              <strong>{metrics.fecharamNegocio}</strong> converteram em fechamento.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
+      {/* US-18: VISÃO DE LEAD TIME E CYCLE TIME PELAS 6 COLUNAS DO WORKFLOW   */}
+      {/* ==================================================================== */}
+      <div className="bg-white rounded-lg border border-[#E7E5E4] p-6 shadow-subtle space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#E7E5E4] pb-4">
+          <div>
+            <h2 className="font-serif text-lg font-bold text-[#1C1917] flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[#0D9488]" />
+              Visão de Lead Time & Cycle Time nas Colunas do Workflow
+            </h2>
+            <p className="text-xs text-[#57534E] mt-0.5">
+              <strong>Cycle Time:</strong> tempo médio que o lead permanece em cada coluna do Kanban •{" "}
+              <strong>Lead Time:</strong> tempo total ponta a ponta desde o <em>1. Primeiro Contato</em> até o <em>6. Fechado / Ganho</em>.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="px-3.5 py-2 rounded-md bg-[#F0FDFA] border border-[#99F6E4] text-right">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-[#0F766E]">
+                Lead Time Médio (1º Contato ➔ Fechado/Ganho)
+              </span>
+              <span className="font-serif text-lg font-bold text-[#115E59]">
+                {workflowTiming.avgClosedLeadTime} dias corridos
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Fluxo Horizontal de Cycle Time por Coluna (Colunas 1 a 6) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          {workflowTiming.columnsCycleTime.map((col, index) => {
+            const isClosedCol = col.key === "fechado_ganho";
+            const isBottleneck =
+              !isClosedCol && col.key === workflowTiming.bottleneckColumn?.key;
+
+            return (
+              <div
+                key={col.key}
+                className={`relative rounded-lg border p-4 flex flex-col justify-between transition-all ${
+                  isClosedCol
+                    ? "bg-[#F0FDFA] border-[#99F6E4]"
+                    : isBottleneck
+                    ? "bg-amber-50/70 border-amber-300"
+                    : "bg-[#FAFAF9] border-[#E7E5E4]"
+                }`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${col.badgeBg}`}
+                    >
+                      Coluna {index + 1}
+                    </span>
+                    {isBottleneck && (
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                        Maior Tempo
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="font-serif text-xs font-bold text-[#1C1917] pt-1">
+                    {col.title}
+                  </h3>
+                </div>
+
+                <div className="my-3 pt-2 border-t border-[#E7E5E4]/80">
+                  {isClosedCol ? (
+                    <>
+                      <span className="block text-[10px] uppercase font-semibold text-[#0F766E]">
+                        Lead Time Total
+                      </span>
+                      <div className="text-xl font-serif font-bold text-[#047857] mt-0.5">
+                        {workflowTiming.avgClosedLeadTime}{" "}
+                        <span className="text-xs font-sans font-normal">dias</span>
+                      </div>
+                      <span className="text-[10px] text-[#0F766E] block mt-0.5">
+                        Do 1º Contato ao Ganho
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block text-[10px] uppercase font-semibold text-[#78716C]">
+                        Cycle Time Médio
+                      </span>
+                      <div className="text-xl font-serif font-bold text-[#1C1917] mt-0.5">
+                        {col.avgDays}{" "}
+                        <span className="text-xs font-sans font-normal text-[#57534E]">dias</span>
+                      </div>
+                      <span className="text-[10px] text-[#78716C] block mt-0.5">
+                        {col.countInStage} card(s) nesta etapa
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {index < workflowTiming.columnsCycleTime.length - 1 && (
+                  <div className="hidden lg:flex absolute -right-2.5 top-1/2 -translate-y-1/2 z-10 w-5 h-5 rounded-full bg-white border border-[#D6D3D1] items-center justify-center text-[#78716C] shadow-sm">
+                    <ArrowRight className="w-3 h-3" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Barra Proporcional Empilhada do Cycle Time ao longo do Funil */}
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between text-xs text-[#57534E]">
+            <span className="font-semibold">
+              Proporção do Tempo Gasto em Cada Etapa até o Fechamento (Composição do Lead Time)
+            </span>
+            <span className="font-mono">
+              Soma média das etapas: <strong>{workflowTiming.totalCycleSum.toFixed(1)} dias</strong>
+            </span>
+          </div>
+
+          <div className="w-full h-6 rounded-md overflow-hidden flex border border-[#D6D3D1]">
+            {workflowTiming.columnsCycleTime.slice(0, 5).map((col) => {
+              const pct = Math.max(
+                8,
+                Math.round((col.avgDays / workflowTiming.totalCycleSum) * 100)
+              );
+              return (
+                <div
+                  key={col.key}
+                  style={{ width: `${pct}%` }}
+                  className={`${col.barColor} text-white text-[10px] font-bold flex items-center justify-center px-1 truncate transition-all`}
+                  title={`${col.title}: ${col.avgDays} dias (${pct}%)`}
+                >
+                  {col.shortTitle} ({col.avgDays}d)
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tabela Resumo de Cycle Time & Lead Time por Oportunidade */}
+        <div className="pt-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#57534E] mb-2.5">
+            Rastreabilidade de Tempo por Empresa (Cycle Time por Coluna & Lead Time Acumulado)
+          </h3>
+          <div className="overflow-x-auto border border-[#E7E5E4] rounded-md">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#F5F5F4] text-[#57534E] text-[11px] uppercase font-semibold border-b border-[#E7E5E4]">
+                <tr>
+                  <th className="py-2.5 px-3">Empresa</th>
+                  <th className="py-2.5 px-3">Etapa Atual</th>
+                  <th className="py-2.5 px-3 text-center">1. 1º Contato</th>
+                  <th className="py-2.5 px-3 text-center">2. Perfil & Frota</th>
+                  <th className="py-2.5 px-3 text-center">3. Cotação</th>
+                  <th className="py-2.5 px-3 text-center">4. Proposta</th>
+                  <th className="py-2.5 px-3 text-center">5. Negociação</th>
+                  <th className="py-2.5 px-3 text-right">Lead Time Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E7E5E4]">
+                {workflowTiming.accountTimings.map(({ account: acc, isClosedWon, totalLeadTimeDays, perStageDays }) => (
+                  <tr key={acc.id} className="hover:bg-[#FAFAF9]">
+                    <td className="py-2.5 px-3 font-semibold text-[#1C1917]">
+                      {acc.razao_social}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {acc.status === "lead" ? (
+                        <StatusBadge stage={acc.estagio} size="sm" />
+                      ) : (
+                        <StatusBadge status={acc.status} size="sm" />
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                      {perStageDays.prospeccao_inicial ? `${perStageDays.prospeccao_inicial}d` : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                      {perStageDays.qualificacao_logistica ? `${perStageDays.qualificacao_logistica}d` : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                      {perStageDays.cotacao_frete ? `${perStageDays.cotacao_frete}d` : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                      {perStageDays.proposta_enviada ? `${perStageDays.proposta_enviada}d` : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
+                      {perStageDays.negociacao ? `${perStageDays.negociacao}d` : "—"}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold">
+                      <span
+                        className={`px-2 py-0.5 rounded ${
+                          isClosedWon
+                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            : "bg-slate-100 text-slate-800"
+                        }`}
+                      >
+                        {totalLeadTimeDays} dias {isClosedWon ? "(Fechado)" : "(Em curso)"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -572,4 +1210,3 @@ export default function RelatoriosPage() {
     </div>
   );
 }
-

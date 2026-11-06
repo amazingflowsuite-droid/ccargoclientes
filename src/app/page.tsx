@@ -395,7 +395,7 @@ export default function DashboardKanbanPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#1C1917]">
-            Gestão de Prospecção & Blindagem
+            Prospecção
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
             Pipeline comercial, dossiê em PDF por cliente e fechamento mensal de contatos.
@@ -481,60 +481,6 @@ export default function DashboardKanbanPage() {
             <AlertOctagon className="w-5 h-5" />
           </div>
         </Link>
-      </div>
-
-      {/* QUICK SHIELD CHECK (CONSULTA RELÂMPAGO ANTES DE LIGAR) */}
-      <div className="bg-white rounded-lg border border-[#E7E5E4] p-5 shadow-subtle space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E7E5E4] pb-2.5">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
-            <h3 className="font-serif text-sm font-bold text-[#1C1917]">
-              Consulta Rápida de Blindagem (Antes de discar)
-            </h3>
-          </div>
-          <span className="text-xs text-[#78716C]">
-            Verifique instantaneamente se a empresa é cliente ou já foi recusada
-          </span>
-        </div>
-
-        <form onSubmit={handleQuickCheck} className="flex flex-col sm:flex-row gap-2.5">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="Digite o CNPJ para checar permissão de contato..."
-              value={quickCnpj}
-              onChange={(e) => setQuickCnpj(formatCNPJ(e.target.value))}
-              maxLength={18}
-              className="w-full pl-3.5 pr-10 py-2 rounded-md border border-[#D6D3D1] bg-[#FAFAF9] font-mono text-xs focus:bg-white focus-ring transition-all"
-            />
-            {quickCnpj && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickCnpj("");
-                  setQuickCollision(null);
-                }}
-                className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={isCheckingQuick || cleanCNPJ(quickCnpj).length !== 14}
-            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5"
-          >
-            <Search className="w-3.5 h-3.5 text-[#0D9488]" />
-            Checar CNPJ
-          </button>
-        </form>
-
-        {quickCollision && (
-          <div className="pt-1">
-            <CollisionAlert collision={quickCollision} checking={isCheckingQuick} />
-          </div>
-        )}
       </div>
 
       {/* BARRA DE FILTRO POR EMPRESA E POR OPERADORA */}

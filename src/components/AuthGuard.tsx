@@ -5,40 +5,64 @@ import { usePathname, useRouter } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/store";
 import { AppUser } from "@/types";
 
+const PUBLIC_PATHS = ["/login", "/definir-senha"];
+
 export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-  const [checked, setChecked] = useState(false);
-  const [user, setUser] = useState<AppUser | null>(null);
+
+  // Inicialização imediata se já estivermos no navegador (evita flash/travamento ao trocar de rota)
+  const [user, setUser] = useState<AppUser | null>(() => {
+    if (typeof window !== "undefined") {
+      return getAuthenticatedUser();
+    }
+    return null;
+  });
+  const [mounted, setMounted] = useState(false);
+
+  const isPublicRoute = PUBLIC_PATHS.some(
+    (p) => pathname === p || pathname?.startsWith(`${p}/`)
+  );
 
   useEffect(() => {
+    setMounted(true);
     const checkAuth = () => {
       const current = getAuthenticatedUser();
       setUser(current);
-      if (!current && pathname !== "/login") {
+      if (!current && !isPublicRoute) {
         router.replace("/login");
-      } else {
-        setChecked(true);
       }
     };
 
     checkAuth();
     window.addEventListener("ccargo-auth-changed", checkAuth);
-    return () => window.removeEventListener("ccargo-auth-changed", checkAuth);
-  }, [pathname, router]);
+    window.addEventListener("storage", checkAuth);
+    return () => {
+      window.removeEventListener("ccargo-auth-changed", checkAuth);
+      window.removeEventListener("storage", checkAuth);
+    };
+  }, [pathname, isPublicRoute, router]);
 
-  if (pathname === "/login") {
+  if (isPublicRoute) {
     return <>{children}</>;
   }
 
-  if (!checked || !user) {
+  // Se já temos usuário autenticado no cliente, renderiza a página imediatamente sem bloquear
+  if (user) {
+    return <>{children}</>;
+  }
+
+  if (!mounted) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#78716C]">
-        Verificando credenciais de acesso...
+        Carregando ambiente comercial...
       </div>
     );
   }
 
-  return <>{children}</>;
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#78716C]">
+      Redirecionando para autenticação...
+    </div>
+  );
 };
-

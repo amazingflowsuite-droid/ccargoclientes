@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { loginWithEmailAndPassword, getAuthenticatedUser } from "@/lib/store";
-import { Truck, Lock, Mail, AlertCircle, ShieldCheck, UserCheck, Loader2 } from "lucide-react";
+import { CCargoLogo } from "@/components/ui/CCargoLogo";
+import { Lock, Mail, AlertCircle, ShieldCheck, UserCheck, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +28,8 @@ export default function LoginPage() {
     try {
       const res = await loginWithEmailAndPassword(email, senha);
       if (res.success && res.user) {
-        router.replace("/");
+        window.location.href = "/";
+        return;
       } else {
         setError(res.error || "Não foi possível realizar o login.");
       }
@@ -45,13 +47,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 py-8">
       <div className="max-w-md w-full bg-white rounded-lg border border-[#E7E5E4] shadow-floating p-6 sm:p-8 space-y-6">
-        {/* Cabeçalho CCargo */}
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-md bg-[#0F172A] flex items-center justify-center text-white mx-auto shadow-sm">
-            <Truck className="w-6 h-6 text-[#0D9488]" />
-          </div>
-          <h1 className="font-serif text-2xl font-bold text-[#1C1917]">
-            CCargo Comercial
+        {/* Cabeçalho CCargo com Logo Oficial */}
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <CCargoLogo size="lg" showSubtitle={false} />
+          <h1 className="font-serif text-xl font-bold text-[#1C1917] pt-1">
+            Prospecção Comercial
           </h1>
           <p className="text-xs text-[#57534E]">
             Acesse com seu e-mail corporativo e senha para gerenciar a prospecção.

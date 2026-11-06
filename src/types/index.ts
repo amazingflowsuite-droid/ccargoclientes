@@ -18,6 +18,7 @@ export type LeadStage =
   | 'perdido';
 
 export type UserRole = 'gestor' | 'comercial';
+export type PasswordStatus = 'ativa' | 'pendente_definicao';
 
 export interface AppUser {
   id: string;
@@ -25,6 +26,9 @@ export interface AppUser {
   email: string;
   perfil: UserRole;
   senha?: string;
+  status_senha?: PasswordStatus;
+  reset_token?: string;
+  reset_token_expires_at?: string;
   ativo: boolean;
   created_at: string;
 }
@@ -83,6 +87,10 @@ export interface Account {
   // Responsáveis
   gerente_conta_nome?: string; // Se for cliente ativo
   sdr_responsavel_nome?: string; // Operadora responsável pela prospecção
+  
+  // Métricas de Workflow (Lead Time & Cycle Time - US-18)
+  stage_history?: Partial<Record<LeadStage, string>>;
+  fechado_em?: string;
   
   created_at: string;
   updated_at: string;

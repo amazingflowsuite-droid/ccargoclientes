@@ -4,8 +4,8 @@ import { Navbar } from "@/components/Navbar";
 import { AuthGuard } from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
-  title: "CCargo | Gestão de Prospecção & Blindagem Comercial",
-  description: "Sistema inteligente de prospecção e blindagem de carteira para transporte rodoviário de cargas.",
+  title: "CCargo | Prospecção Comercial",
+  description: "Sistema de prospecção comercial para transporte rodoviário de cargas.",
 };
 
 export default function RootLayout({

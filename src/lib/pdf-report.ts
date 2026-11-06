@@ -1,6 +1,17 @@
 import { Account, ContactLog, LeadStage } from "@/types";
 import { formatCNPJ } from "./utils";
 
+const CCARGO_LOGO_SVG_HTML = `
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+    <svg width="150" height="42" viewBox="0 0 260 76" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M27.5 4.5C31.2 2.3 35.8 2.3 39.5 4.5L60.2 16.5C63.9 18.7 66.2 22.6 66.2 26.9V50.9C66.2 55.2 63.9 59.1 60.2 61.3L39.5 73.3C35.8 75.5 31.2 75.5 27.5 73.3L6.8 61.3C3.1 59.1 0.8 55.2 0.8 50.9V26.9C0.8 22.6 3.1 18.7 6.8 16.5L27.5 4.5Z" fill="#C81E1E"/>
+      <path d="M49.5 25.5H28.2C22.8 25.5 19.2 28.8 18.1 34.1L16.4 42.5C15.3 47.8 18.2 51.5 23.6 51.5H45.8L47.8 42.2H27.8C25.8 42.2 24.8 41.1 25.2 39.1L25.9 35.8C26.3 33.8 27.6 32.8 29.6 32.8H48.0L49.5 25.5Z" fill="#FFFFFF"/>
+      <text x="74" y="49" fill="#111827" font-family="Inter, Arial, sans-serif" font-weight="900" font-style="italic" font-size="43" letter-spacing="-1.5">Cargo</text>
+      <text x="78" y="67" fill="#4B5563" font-family="Inter, Arial, sans-serif" font-weight="600" font-style="italic" font-size="14.5" letter-spacing="2.5">Transportes</text>
+    </svg>
+  </div>
+`;
+
 function escapeHtml(str?: string | null): string {
   if (!str) return "";
   return str
@@ -350,7 +361,7 @@ export function generateClientDossierPDF(account: Account, logs: ContactLog[]): 
       <div class="page-container">
         <div class="header">
           <div>
-            <div class="brand-title">CCargo Transportes Rodoviários</div>
+            ${CCARGO_LOGO_SVG_HTML}
             <div class="brand-sub">Dossiê Comercial & Histórico de Prospecção do Cliente</div>
           </div>
           <div class="meta-box">
@@ -739,7 +750,7 @@ export function generateMonthlyReportPDF(payload: MonthlyReportPayload): void {
       <div class="page-container">
         <div class="header">
           <div>
-            <div class="brand-title">CCargo Transportes Rodoviários</div>
+            ${CCARGO_LOGO_SVG_HTML}
             <div class="brand-sub">Balanço Gerencial de Prospecção Comercial</div>
           </div>
           <div style="text-align: right; font-size: 11px; color: #57534E;">

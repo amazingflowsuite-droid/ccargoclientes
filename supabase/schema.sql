@@ -39,16 +39,24 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
--- 2. TABELA DE USUÁRIOS E PERFIS DE ACESSO (RBAC: GESTOR vs COMERCIAL)
+-- 2. TABELA DE USUÁRIOS E PERFIS DE ACESSO (RBAC: GESTOR vs COMERCIAL + TOKEN DE SENHA)
 CREATE TABLE IF NOT EXISTS app_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   perfil VARCHAR(20) NOT NULL DEFAULT 'comercial' CHECK (perfil IN ('gestor', 'comercial')),
-  senha TEXT NOT NULL,
+  senha TEXT DEFAULT '',
+  status_senha VARCHAR(30) DEFAULT 'ativa',
+  reset_token TEXT,
+  reset_token_expires_at TIMESTAMPTZ,
   ativo BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS status_senha VARCHAR(30) DEFAULT 'ativa';
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_token TEXT;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ;
+ALTER TABLE app_users ALTER COLUMN senha DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
 CREATE INDEX IF NOT EXISTS idx_app_users_perfil ON app_users(perfil);
