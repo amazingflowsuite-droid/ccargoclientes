@@ -1,17 +1,32 @@
-import { Account, CollisionCheckResult, ContactLog, OperatorUser } from "@/types";
+import { Account, AppUser, CollisionCheckResult, ContactLog, OperatorUser, UserRole } from "@/types";
 import { cleanCNPJ, formatCNPJ, getCNPJRaiz } from "./utils";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
 const STORAGE_KEY_ACCOUNTS = "ccargo_accounts_v2";
 const STORAGE_KEY_LOGS = "ccargo_contact_logs_v2";
 const STORAGE_KEY_NOTES_OVERLAY = "ccargo_notes_overlay_v1";
-const STORAGE_KEY_CURRENT_OPERATOR = "ccargo_current_operator_v1";
-const STORAGE_KEY_OPERATORS_LIST = "ccargo_operators_list_v1";
+const STORAGE_KEY_USERS = "ccargo_app_users_v1";
+const STORAGE_KEY_AUTH_SESSION = "ccargo_auth_session_v1";
 
-const DEFAULT_OPERATORS: OperatorUser[] = [
-  { id: "op-1", nome: "Ana Paula (Comercial)", cargo: "Operadora de Prospecção (SDR)" },
-  { id: "op-2", nome: "Gestora Comercial", cargo: "Diretoria / Gestão Comercial" },
-  { id: "op-3", nome: "Marcos Lima (Comercial)", cargo: "Operador de Prospecção (SDR)" },
+const INITIAL_USERS: AppUser[] = [
+  {
+    id: "usr-gestor-1",
+    nome: "Gestora Comercial",
+    email: "gestor@ccargo.com.br",
+    perfil: "gestor",
+    senha: "123456",
+    ativo: true,
+    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "usr-comercial-1",
+    nome: "Ana Paula (Comercial)",
+    email: "comercial@ccargo.com.br",
+    perfil: "comercial",
+    senha: "123456",
+    ativo: true,
+    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+  },
 ];
 
 const INITIAL_ACCOUNTS: Account[] = [
@@ -189,61 +204,213 @@ const INITIAL_LOGS: ContactLog[] = [
 ];
 
 // ============================================================================
-// GESTÃO DE OPERADORES / USUÁRIOS (US-09)
+// AUTENTICAÇÃO E GESTÃO DE USUÁRIOS POR PERFIL (RBAC: GESTOR vs COMERCIAL)
 // ============================================================================
 
-export function getOperatorsList(): OperatorUser[] {
-  if (typeof window === "undefined") return DEFAULT_OPERATORS;
+function getLocalUsers(): AppUser[] {
+  if (typeof window === "undefined") return INITIAL_USERS;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_OPERATORS_LIST);
+    const raw = localStorage.getItem(STORAGE_KEY_USERS);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY_OPERATORS_LIST, JSON.stringify(DEFAULT_OPERATORS));
-      return DEFAULT_OPERATORS;
+      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
+      return INITIAL_USERS;
     }
     return JSON.parse(raw);
   } catch {
-    return DEFAULT_OPERATORS;
+    return INITIAL_USERS;
   }
 }
 
-export function getCurrentOperator(): string {
-  if (typeof window === "undefined") return DEFAULT_OPERATORS[0].nome;
-  try {
-    return localStorage.getItem(STORAGE_KEY_CURRENT_OPERATOR) || DEFAULT_OPERATORS[0].nome;
-  } catch {
-    return DEFAULT_OPERATORS[0].nome;
-  }
-}
-
-export function setCurrentOperator(operatorName: string): void {
+function saveLocalUsers(users: AppUser[]): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY_CURRENT_OPERATOR, operatorName);
-    window.dispatchEvent(new Event("ccargo-operator-changed"));
+    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
   } catch (err) {
     console.error(err);
   }
 }
 
-export function addOperator(nome: string, cargo = "Operadora Comercial"): OperatorUser {
-  const cleanName = nome.trim();
-  const list = getOperatorsList();
-  const existing = list.find((o) => o.nome.toLowerCase() === cleanName.toLowerCase());
-  if (existing) {
-    setCurrentOperator(existing.nome);
-    return existing;
+export async function fetchAllAppUsers(): Promise<AppUser[]> {
+  const localUsers = getLocalUsers();
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("app_users")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const remote = data as AppUser[];
+        const remoteEmails = new Set(remote.map((u) => u.email.toLowerCase()));
+        const merged = [
+          ...remote,
+          ...localUsers.filter((u) => !remoteEmails.has(u.email.toLowerCase())),
+        ];
+        saveLocalUsers(merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn("Usando lista local de usuários:", err);
+    }
   }
-  const newOp: OperatorUser = {
-    id: `op-${Date.now()}`,
-    nome: cleanName,
-    cargo,
+
+  return localUsers;
+}
+
+export function getAuthenticatedUser(): AppUser | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_AUTH_SESSION);
+    if (!raw) return null;
+    return JSON.parse(raw) as AppUser;
+  } catch {
+    return null;
+  }
+}
+
+export async function loginWithEmailAndPassword(
+  email: string,
+  senha: string
+): Promise<{ success: boolean; user?: AppUser; error?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = senha.trim();
+
+  if (!cleanEmail || !cleanPass) {
+    return { success: false, error: "Informe o e-mail e a senha." };
+  }
+
+  const users = await fetchAllAppUsers();
+  const matched = users.find(
+    (u) => u.email.toLowerCase() === cleanEmail && u.senha === cleanPass
+  );
+
+  if (!matched) {
+    return { success: false, error: "E-mail ou senha inválidos." };
+  }
+
+  if (!matched.ativo) {
+    return {
+      success: false,
+      error: "Este usuário está desativado. Contate o gestor do sistema.",
+    };
+  }
+
+  const sessionUser: AppUser = {
+    id: matched.id,
+    nome: matched.nome,
+    email: matched.email,
+    perfil: matched.perfil,
+    ativo: matched.ativo,
+    created_at: matched.created_at,
   };
-  const updated = [...list, newOp];
+
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY_OPERATORS_LIST, JSON.stringify(updated));
+    localStorage.setItem(STORAGE_KEY_AUTH_SESSION, JSON.stringify(sessionUser));
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
   }
-  setCurrentOperator(newOp.nome);
-  return newOp;
+
+  return { success: true, user: sessionUser };
+}
+
+export function logoutUser(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
+  window.dispatchEvent(new Event("ccargo-auth-changed"));
+}
+
+export async function createAppUser(params: {
+  nome: string;
+  email: string;
+  perfil: UserRole;
+  senha: string;
+}): Promise<{ success: boolean; user?: AppUser; error?: string }> {
+  const cleanNome = params.nome.trim();
+  const cleanEmail = params.email.trim().toLowerCase();
+  const cleanSenha = params.senha.trim();
+
+  if (!cleanNome || !cleanEmail || !cleanSenha) {
+    return { success: false, error: "Preencha nome, e-mail e senha." };
+  }
+
+  const existingUsers = await fetchAllAppUsers();
+  if (existingUsers.some((u) => u.email.toLowerCase() === cleanEmail)) {
+    return { success: false, error: "Já existe um usuário cadastrado com este e-mail." };
+  }
+
+  const payload = {
+    nome: cleanNome,
+    email: cleanEmail,
+    perfil: params.perfil,
+    senha: cleanSenha,
+    ativo: true,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("app_users")
+        .insert(payload)
+        .select()
+        .single();
+
+      if (!error && data) {
+        const created = data as AppUser;
+        saveLocalUsers([...existingUsers, created]);
+        window.dispatchEvent(new Event("ccargo-auth-changed"));
+        return { success: true, user: created };
+      }
+    } catch (err) {
+      console.warn("Fallback local ao criar usuário:", err);
+    }
+  }
+
+  const newUser: AppUser = {
+    ...payload,
+    id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    created_at: new Date().toISOString(),
+  };
+
+  saveLocalUsers([...existingUsers, newUser]);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+  }
+  return { success: true, user: newUser };
+}
+
+export async function deleteAppUser(id: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabase && !id.startsWith("usr-")) {
+    try {
+      await supabase.from("app_users").delete().eq("id", id);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+
+  const updated = getLocalUsers().filter((u) => u.id !== id);
+  saveLocalUsers(updated);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+  }
+  return true;
+}
+
+// Helpers de compatibilidade para relatórios e filtros
+export function getCurrentOperator(): string {
+  const auth = getAuthenticatedUser();
+  if (auth) return auth.nome;
+  return "Ana Paula (Comercial)";
+}
+
+export function getOperatorsList(): OperatorUser[] {
+  const users = getLocalUsers();
+  return users.map((u) => ({
+    id: u.id,
+    nome: u.nome,
+    cargo: u.perfil === "gestor" ? "Gestor Comercial" : "Comercial / Prospecção",
+    email: u.email,
+    perfil: u.perfil,
+  }));
 }
 
 // ============================================================================
@@ -285,7 +452,6 @@ function getLocalAccounts(): Account[] {
       return INITIAL_ACCOUNTS;
     }
     const parsed: Account[] = JSON.parse(raw);
-    // Garantir que o exemplo Tauste esteja presente para avaliação da cliente
     if (!parsed.some((a) => cleanCNPJ(a.cnpj) === "45464748000133")) {
       const withTauste = [INITIAL_ACCOUNTS[0], ...parsed];
       localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(withTauste));
@@ -334,7 +500,6 @@ export async function fetchAllAccounts(): Promise<Account[]> {
 
       if (!error && data && data.length > 0) {
         const remoteAccounts = data as Account[];
-        // Se Tauste ainda não estiver no banco remoto mas estiver no seed, incluir para demonstração
         const hasTauste = remoteAccounts.some((a) => cleanCNPJ(a.cnpj) === "45464748000133");
         const combined = hasTauste ? remoteAccounts : [INITIAL_ACCOUNTS[0], ...remoteAccounts];
         return mergeWithOverlay(combined);
@@ -351,12 +516,10 @@ export async function fetchAccountById(id: string): Promise<Account | null> {
   return accounts.find((a) => a.id === id) || null;
 }
 
-// Implementação das Regras US-01 (Bloqueio Exato) e US-02 (Alerta Híbrido por Raiz)
 export async function checkCNPJCollision(rawCnpj: string): Promise<CollisionCheckResult> {
   const clean = cleanCNPJ(rawCnpj);
   const raiz = getCNPJRaiz(clean);
 
-  // 1. Tentar direto via RPC no Supabase (se configurado)
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.rpc("check_cnpj_collision", { p_cnpj: clean });
@@ -373,7 +536,6 @@ export async function checkCNPJCollision(rawCnpj: string): Promise<CollisionChec
     }
   }
 
-  // 2. Fallback local / memória
   const accounts = await fetchAllAccounts();
   const exactMatch = accounts.find((a) => cleanCNPJ(a.cnpj) === clean) || null;
   const relatedAccounts = accounts.filter((a) => {
@@ -425,7 +587,6 @@ export async function createAccount(
           observacoes_importantes: accountData.observacoes_importantes,
         };
       } else if (error) {
-        // Caso o banco remoto ainda não tenha a coluna observacoes_importantes, tentar sem ela
         const { observacoes_importantes, ...payloadWithoutNotes } = payload;
         const retry = await supabase
           .from("accounts")
@@ -518,7 +679,7 @@ export async function deleteAccount(id: string): Promise<boolean> {
 }
 
 // ============================================================================
-// HISTÓRICO DE CONTATOS / LIGAÇÕES (US-07, US-11, US-12)
+// HISTÓRICO DE CONTATOS / LIGAÇÕES
 // ============================================================================
 
 function getLocalLogs(): ContactLog[] {

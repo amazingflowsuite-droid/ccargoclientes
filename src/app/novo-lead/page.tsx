@@ -7,10 +7,12 @@ import {
   createAccount,
   getCurrentOperator,
   getOperatorsList,
+  getAuthenticatedUser,
+  fetchAllAppUsers,
 } from "@/lib/store";
 import { fetchCompanyByCNPJ } from "@/lib/brasil-api";
 import { cleanCNPJ, formatCNPJ } from "@/lib/utils";
-import { CollisionCheckResult, OperatorUser } from "@/types";
+import { CollisionCheckResult, OperatorUser, AppUser } from "@/types";
 import { CollisionAlert } from "@/components/CollisionAlert";
 import {
   Loader2,
@@ -70,6 +72,7 @@ export default function NovoLeadPage() {
   const [volumeMensal, setVolumeMensal] = useState("");
 
   // Observações Importantes e Operadora (US-09 e US-10)
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
   const [observacoesImportantes, setObservacoesImportantes] = useState("");
   const [sdrResponsavel, setSdrResponsavel] = useState("Ana Paula (Comercial)");
   const [operatorsList, setOperatorsList] = useState<OperatorUser[]>([]);
@@ -82,8 +85,12 @@ export default function NovoLeadPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setOperatorsList(getOperatorsList());
-    setSdrResponsavel(getCurrentOperator());
+    const user = getAuthenticatedUser();
+    setAuthUser(user);
+    setSdrResponsavel(user ? user.nome : getCurrentOperator());
+    fetchAllAppUsers().then(() => {
+      setOperatorsList(getOperatorsList());
+    });
   }, []);
 
   // Efeito para verificar colisão no banco sempre que o CNPJ atinge 14 dígitos
@@ -216,24 +223,30 @@ export default function NovoLeadPage() {
           </p>
         </div>
 
-        {/* Operadora Responsável */}
+        {/* Operadora Responsável (Fixa para Comercial, Selecionável apenas para Gestor) */}
         <div className="bg-white border border-[#E7E5E4] rounded-md px-3.5 py-2 shadow-subtle flex items-center gap-2 self-start sm:self-center">
           <UserCheck className="w-4 h-4 text-[#0D9488]" />
           <div className="text-xs">
             <span className="text-[#78716C] block text-[10px] uppercase font-semibold">
               Operadora Responsável
             </span>
-            <select
-              value={sdrResponsavel}
-              onChange={(e) => setSdrResponsavel(e.target.value)}
-              className="font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
-            >
-              {operatorsList.map((op) => (
-                <option key={op.id} value={op.nome}>
-                  {op.nome}
-                </option>
-              ))}
-            </select>
+            {authUser?.perfil === "gestor" ? (
+              <select
+                value={sdrResponsavel}
+                onChange={(e) => setSdrResponsavel(e.target.value)}
+                className="font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
+              >
+                {operatorsList.map((op) => (
+                  <option key={op.id} value={op.nome}>
+                    {op.nome}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-semibold text-[#1C1917] block mt-0.5">
+                {authUser?.nome || sdrResponsavel}
+              </span>
+            )}
           </div>
         </div>
       </div>

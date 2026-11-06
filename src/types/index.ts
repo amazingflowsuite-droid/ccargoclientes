@@ -17,6 +17,26 @@ export type LeadStage =
   | 'fechado_ganho'
   | 'perdido';
 
+export type UserRole = 'gestor' | 'comercial';
+
+export interface AppUser {
+  id: string;
+  nome: string;
+  email: string;
+  perfil: UserRole;
+  senha?: string;
+  ativo: boolean;
+  created_at: string;
+}
+
+export interface OperatorUser {
+  id: string;
+  nome: string;
+  cargo: string;
+  email?: string;
+  perfil?: UserRole;
+}
+
 export interface Account {
   id: string;
   cnpj: string; // 14 dígitos limpos
@@ -77,12 +97,6 @@ export interface ContactLog {
   proximo_contato?: string;
   usuario_nome: string;
   created_at: string;
-}
-
-export interface OperatorUser {
-  id: string;
-  nome: string;
-  cargo: string;
 }
 
 export interface CollisionCheckResult {

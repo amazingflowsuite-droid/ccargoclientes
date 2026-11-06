@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- CCargo - Sistema de Gestão de Prospecção & Blindagem de Clientes
--- Supabase / PostgreSQL Schema Definition & RLS Policies (v2.0)
+-- Supabase / PostgreSQL Schema Definition & RLS Policies (v2.1 - Auth & RBAC)
 -- ==============================================================================
 
 -- 1. ENUMS
@@ -39,7 +39,42 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
--- 2. TABELA PRINCIPAL DE EMPRESAS / CONTAS
+-- 2. TABELA DE USUÁRIOS E PERFIS DE ACESSO (RBAC: GESTOR vs COMERCIAL)
+CREATE TABLE IF NOT EXISTS app_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  perfil VARCHAR(20) NOT NULL DEFAULT 'comercial' CHECK (perfil IN ('gestor', 'comercial')),
+  senha TEXT NOT NULL,
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
+CREATE INDEX IF NOT EXISTS idx_app_users_perfil ON app_users(perfil);
+
+ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir leitura publica app_users" ON app_users;
+CREATE POLICY "Permitir leitura publica app_users" ON app_users FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Permitir insercao publica app_users" ON app_users;
+CREATE POLICY "Permitir insercao publica app_users" ON app_users FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir atualizacao publica app_users" ON app_users;
+CREATE POLICY "Permitir atualizacao publica app_users" ON app_users FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Permitir exclusao publica app_users" ON app_users;
+CREATE POLICY "Permitir exclusao publica app_users" ON app_users FOR DELETE USING (true);
+
+-- Seed de Usuários Iniciais (Gestor e Operadora Comercial)
+INSERT INTO app_users (nome, email, perfil, senha, ativo)
+VALUES
+  ('Gestora Comercial', 'gestor@ccargo.com.br', 'gestor', '123456', true),
+  ('Ana Paula (Comercial)', 'comercial@ccargo.com.br', 'comercial', '123456', true)
+ON CONFLICT (email) DO NOTHING;
+
+-- 3. TABELA PRINCIPAL DE EMPRESAS / CONTAS
 CREATE TABLE IF NOT EXISTS accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cnpj VARCHAR(14) NOT NULL UNIQUE,
@@ -101,7 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);
 CREATE INDEX IF NOT EXISTS idx_accounts_estagio ON accounts(estagio);
 CREATE INDEX IF NOT EXISTS idx_accounts_created_at ON accounts(created_at);
 
--- 3. HISTÓRICO DE INTERAÇÕES / CONTATOS
+-- 4. HISTÓRICO DE INTERAÇÕES / CONTATOS
 CREATE TABLE IF NOT EXISTS contact_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -117,7 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_contact_logs_account ON contact_logs(account_id);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_created_at ON contact_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_usuario ON contact_logs(usuario_nome);
 
--- 4. POLÍTICAS DE ROW LEVEL SECURITY (RLS) PARA ACESSO WEB
+-- 5. POLÍTICAS DE ROW LEVEL SECURITY (RLS) PARA ACESSO WEB
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir leitura publica accounts" ON accounts;
@@ -146,7 +181,7 @@ CREATE POLICY "Permitir atualizacao publica contact_logs" ON contact_logs FOR UP
 DROP POLICY IF EXISTS "Permitir exclusao publica contact_logs" ON contact_logs;
 CREATE POLICY "Permitir exclusao publica contact_logs" ON contact_logs FOR DELETE USING (true);
 
--- 5. FUNÇÃO RPC PARA VERIFICAÇÃO HÍBRIDA DE CNPJ (US-01 e US-02)
+-- 6. FUNÇÃO RPC PARA VERIFICAÇÃO HÍBRIDA DE CNPJ (US-01 e US-02)
 CREATE OR REPLACE FUNCTION check_cnpj_collision(p_cnpj VARCHAR(14))
 RETURNS JSON AS $$
 DECLARE
@@ -190,7 +225,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 6. TRIGGER DE ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP
+-- 7. TRIGGER DE ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP
 CREATE OR REPLACE FUNCTION trigger_set_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -205,7 +240,7 @@ BEFORE UPDATE ON accounts
 FOR EACH ROW
 EXECUTE FUNCTION trigger_set_timestamp();
 
--- 7. DADOS DE EXEMPLO (SEED)
+-- 8. DADOS DE EXEMPLO (SEED)
 INSERT INTO accounts (cnpj, cnpj_formatado, razao_social, nome_fantasia, status, gerente_conta_nome, tipo_carga, rotas_principais, tipos_veiculos, volume_mensal_estimado, observacoes_importantes)
 VALUES (
   '12345678000190',

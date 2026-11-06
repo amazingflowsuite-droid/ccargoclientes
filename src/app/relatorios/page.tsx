@@ -6,6 +6,8 @@ import {
   fetchAllAccounts,
   fetchAllContactLogs,
   getOperatorsList,
+  getAuthenticatedUser,
+  fetchAllAppUsers,
 } from "@/lib/store";
 import {
   generateClientDossierPDF,
@@ -14,7 +16,7 @@ import {
   getCanalLabel,
   getResultadoLabel,
 } from "@/lib/pdf-report";
-import { Account, ContactLog, OperatorUser } from "@/types";
+import { Account, ContactLog, OperatorUser, AppUser } from "@/types";
 import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
@@ -41,6 +43,7 @@ const MONTHS = [
 ];
 
 export default function RelatoriosPage() {
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [logs, setLogs] = useState<ContactLog[]>([]);
   const [operators, setOperators] = useState<OperatorUser[]>([]);
@@ -61,7 +64,10 @@ export default function RelatoriosPage() {
   const [clientSearch, setClientSearch] = useState<string>("");
 
   useEffect(() => {
-    setOperators(getOperatorsList());
+    setAuthUser(getAuthenticatedUser());
+    fetchAllAppUsers().then(() => {
+      setOperators(getOperatorsList());
+    });
     loadAll();
   }, []);
 
@@ -204,6 +210,33 @@ export default function RelatoriosPage() {
   function handlePrintClientPDF(account: Account) {
     const clientLogs = logs.filter((l) => l.account_id === account.id);
     generateClientDossierPDF(account, clientLogs);
+  }
+
+  // Bloqueio de segurança para perfil diferente de Gestor
+  if (authUser && authUser.perfil !== "gestor") {
+    return (
+      <div className="max-w-xl mx-auto mt-12 bg-white rounded-lg border border-red-200 p-8 text-center shadow-subtle space-y-4">
+        <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600 mx-auto">
+          <AlertOctagon className="w-6 h-6" />
+        </div>
+        <h1 className="font-serif text-xl font-bold text-[#1C1917]">
+          Acesso Restrito ao Perfil Gestor
+        </h1>
+        <p className="text-sm text-[#57534E]">
+          Olá, <strong>{authUser.nome}</strong>. A Central de Relatórios Gerenciais e Fechamento Mensal é exclusiva para o perfil de{" "}
+          <strong>Gestor Comercial</strong>. Você ainda pode gerar o dossiê em PDF individual de cada cliente diretamente nos cards do Funil de Vendas.
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#0F172A] text-white text-xs font-semibold rounded-md hover:bg-[#1E293B] transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Voltar ao Funil de Vendas
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (

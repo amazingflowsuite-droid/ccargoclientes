@@ -10,6 +10,8 @@ import {
   addContactLog,
   getCurrentOperator,
   getOperatorsList,
+  getAuthenticatedUser,
+  fetchAllAppUsers,
 } from "@/lib/store";
 import { generateClientDossierPDF } from "@/lib/pdf-report";
 import {
@@ -19,6 +21,7 @@ import {
   CollisionCheckResult,
   ContactLog,
   OperatorUser,
+  AppUser,
 } from "@/types";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { CollisionAlert } from "@/components/CollisionAlert";
@@ -87,7 +90,8 @@ export default function DashboardKanbanPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Operadores
+  // Operadores & Usuário Autenticado (RBAC)
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
   const [operators, setOperators] = useState<OperatorUser[]>([]);
   const [operatorFilter, setOperatorFilter] = useState<string>("TODOS");
 
@@ -126,12 +130,22 @@ export default function DashboardKanbanPage() {
   const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null);
 
   useEffect(() => {
-    setOperators(getOperatorsList());
+    setAuthUser(getAuthenticatedUser());
+    fetchAllAppUsers().then(() => {
+      setOperators(getOperatorsList());
+    });
     loadData();
 
-    const handleOpChange = () => setOperators(getOperatorsList());
-    window.addEventListener("ccargo-operator-changed", handleOpChange);
-    return () => window.removeEventListener("ccargo-operator-changed", handleOpChange);
+    const handleAuthOrOpChange = () => {
+      setAuthUser(getAuthenticatedUser());
+      setOperators(getOperatorsList());
+    };
+    window.addEventListener("ccargo-operator-changed", handleAuthOrOpChange);
+    window.addEventListener("ccargo-auth-changed", handleAuthOrOpChange);
+    return () => {
+      window.removeEventListener("ccargo-operator-changed", handleAuthOrOpChange);
+      window.removeEventListener("ccargo-auth-changed", handleAuthOrOpChange);
+    };
   }, []);
 
   async function loadData() {
@@ -389,13 +403,15 @@ export default function DashboardKanbanPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <Link
-            href="/relatorios"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-[#F5F5F4] text-[#1C1917] border border-[#D6D3D1] text-sm font-semibold rounded-md shadow-subtle transition-all focus-ring"
-          >
-            <BarChart3 className="w-4 h-4 text-[#0D9488]" />
-            Relatórios & PDF do Mês
-          </Link>
+          {authUser?.perfil === "gestor" && (
+            <Link
+              href="/relatorios"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-[#F5F5F4] text-[#1C1917] border border-[#D6D3D1] text-sm font-semibold rounded-md shadow-subtle transition-all focus-ring"
+            >
+              <BarChart3 className="w-4 h-4 text-[#0D9488]" />
+              Relatórios & PDF do Mês
+            </Link>
+          )}
 
           <Link
             href="/novo-lead"
@@ -535,22 +551,24 @@ export default function DashboardKanbanPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1.5 bg-white border border-[#D6D3D1] rounded-md px-2.5 py-1.5">
-            <UserCheck className="w-3.5 h-3.5 text-[#0D9488]" />
-            <span className="text-xs text-[#78716C]">Operadora:</span>
-            <select
-              value={operatorFilter}
-              onChange={(e) => setOperatorFilter(e.target.value)}
-              className="text-xs font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
-            >
-              <option value="TODOS">Todas as Operadoras</option>
-              {operators.map((op) => (
-                <option key={op.id} value={op.nome}>
-                  {op.nome}
-                </option>
-              ))}
-            </select>
-          </div>
+          {authUser?.perfil === "gestor" && (
+            <div className="flex items-center gap-1.5 bg-white border border-[#D6D3D1] rounded-md px-2.5 py-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-[#0D9488]" />
+              <span className="text-xs text-[#78716C]">Operadora:</span>
+              <select
+                value={operatorFilter}
+                onChange={(e) => setOperatorFilter(e.target.value)}
+                className="text-xs font-semibold text-[#1C1917] bg-transparent focus:outline-none cursor-pointer"
+              >
+                <option value="TODOS">Todas as Operadoras</option>
+                {operators.map((op) => (
+                  <option key={op.id} value={op.nome}>
+                    {op.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 text-xs text-[#57534E]">
