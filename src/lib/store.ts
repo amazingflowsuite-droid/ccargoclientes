@@ -778,7 +778,64 @@ export async function completePasswordDefinition(params: {
   return { success: true, user: sessionUser };
 }
 
-export async function deleteAppUser(id: string): Promise<boolean> {
+export async function toggleAppUserActive(id: string, ativo: boolean): Promise<boolean> {
+  if (isSupabaseConfigured && supabase && !id.startsWith("usr-")) {
+    try {
+      await supabase.from("app_users").update({ ativo }).eq("id", id);
+    } catch (err) {
+      console.warn("Erro ao alterar status ativo no Supabase:", err);
+    }
+  }
+
+  const users = await fetchAllAppUsers();
+  const updated = users.map((u) => (u.id === id ? { ...u, ativo } : u));
+  saveLocalUsers(updated);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+  }
+  return true;
+}
+
+export async function deleteAppUser(id: string): Promise<{
+  success: boolean;
+  blockedByHistory?: boolean;
+  accountsCount?: number;
+  logsCount?: number;
+  error?: string;
+}> {
+  const users = await fetchAllAppUsers();
+  const target = users.find((u) => u.id === id);
+  if (!target) {
+    return { success: false, error: "Usuário não encontrado." };
+  }
+
+  const targetName = target.nome.trim().toLowerCase();
+  const [allAccounts, allLogs] = await Promise.all([
+    fetchAllAccounts(),
+    fetchAllContactLogs(),
+  ]);
+
+  const accountsCount = allAccounts.filter((acc) => {
+    const sdr = (acc.sdr_responsavel_nome || "").trim().toLowerCase();
+    const mgr = (acc.gerente_conta_nome || "").trim().toLowerCase();
+    return sdr === targetName || mgr === targetName;
+  }).length;
+
+  const logsCount = allLogs.filter((log) => {
+    const op = (log.usuario_nome || "").trim().toLowerCase();
+    return op === targetName;
+  }).length;
+
+  if (accountsCount > 0 || logsCount > 0) {
+    return {
+      success: false,
+      blockedByHistory: true,
+      accountsCount,
+      logsCount,
+      error: `Não é permitido excluir "${target.nome}" pois há ${accountsCount} prospecção(ões) e ${logsCount} interação(ões) vinculadas ao histórico de Lead Time, Cycle Time e Performance.`,
+    };
+  }
+
   if (isSupabaseConfigured && supabase && !id.startsWith("usr-")) {
     try {
       await supabase.from("app_users").delete().eq("id", id);
@@ -787,12 +844,12 @@ export async function deleteAppUser(id: string): Promise<boolean> {
     }
   }
 
-  const updated = getLocalUsers().filter((u) => u.id !== id);
+  const updated = users.filter((u) => u.id !== id);
   saveLocalUsers(updated);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("ccargo-auth-changed"));
   }
-  return true;
+  return { success: true };
 }
 
 // Helpers de compatibilidade para relatórios e filtros

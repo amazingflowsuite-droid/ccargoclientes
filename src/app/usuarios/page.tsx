@@ -6,6 +6,7 @@ import {
   fetchAllAppUsers,
   createAppUser,
   deleteAppUser,
+  toggleAppUserActive,
   getAuthenticatedUser,
   requestPasswordReset,
 } from "@/lib/store";
@@ -23,6 +24,8 @@ import {
   KeyRound,
   Send,
   Clock,
+  Ban,
+  Power,
 } from "lucide-react";
 
 export default function UsuariosPage() {
@@ -157,18 +160,63 @@ export default function UsuariosPage() {
     }
   }
 
+  async function handleToggleActive(u: AppUser) {
+    if (u.id === currentUser?.id) {
+      alert("Você não pode desativar o seu próprio usuário logado.");
+      return;
+    }
+    const nextState = !u.ativo;
+    await toggleAppUserActive(u.id, nextState);
+    setSuccessMsg(
+      nextState
+        ? `Acesso de login de "${u.nome}" reativado com sucesso.`
+        : `Acesso de login de "${u.nome}" bloqueado (inativado). Todo o histórico de prospecções e Lead/Cycle Time foi preservado.`
+    );
+    await loadUsers();
+  }
+
   async function handleDelete(u: AppUser) {
     if (u.id === currentUser?.id) {
       alert("Você não pode excluir o seu próprio usuário logado.");
       return;
     }
+    setError(null);
+    setSuccessMsg(null);
+
     const ok = confirm(
-      `Tem certeza que deseja remover o acesso do usuário "${u.nome}" (${u.email})?`
+      `Deseja excluir o usuário "${u.nome}" (${u.email})?`
     );
     if (!ok) return;
 
-    await deleteAppUser(u.id);
-    await loadUsers();
+    const res = await deleteAppUser(u.id);
+    if (res.blockedByHistory) {
+      if (u.ativo) {
+        const shouldDeactivate = confirm(
+          `⚠️ EXCLUSÃO BLOQUEADA PARA PROTEÇÃO DE DADOS:\n\nO usuário "${u.nome}" possui ${res.accountsCount} prospecção(ões) e ${res.logsCount} interação(ões) registradas no sistema.\nPara não impactar os cálculos de Lead Time, Cycle Time e Performance Comercial, não é permitido apagar o registro dele.\n\nDeseja INATIVAR (bloquear) o acesso de login deste usuário mantendo todo o histórico intacto?`
+        );
+        if (shouldDeactivate) {
+          await toggleAppUserActive(u.id, false);
+          setSuccessMsg(
+            `O usuário "${u.nome}" possui histórico comercial e por isso seu login foi INATIVADO (bloqueado), preservando 100% dos indicadores de Lead Time e Cycle Time.`
+          );
+          await loadUsers();
+        } else {
+          setError(res.error || null);
+        }
+      } else {
+        setError(
+          `${res.error} O acesso de login deste usuário já se encontra bloqueado (Inativo).`
+        );
+      }
+      return;
+    }
+
+    if (res.success) {
+      setSuccessMsg(`Usuário "${u.nome}" (sem histórico vinculado) foi excluído.`);
+      await loadUsers();
+    } else if (res.error) {
+      setError(res.error);
+    }
   }
 
   // Bloqueio caso um usuário "comercial" tente acessar /usuarios pela URL
@@ -388,14 +436,25 @@ export default function UsuariosPage() {
                     const isResetting = resettingUserId === u.id;
 
                     return (
-                      <tr key={u.id} className="hover:bg-[#FAFAF9]">
+                      <tr
+                        key={u.id}
+                        className={`hover:bg-[#FAFAF9] ${!u.ativo ? "opacity-65 bg-slate-50/60" : ""}`}
+                      >
                         <td className="py-3.5 px-4 font-bold text-[#1C1917]">
-                          {u.nome}
-                          {u.id === currentUser?.id && (
-                            <span className="ml-2 text-[10px] font-normal px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
-                              Você
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{u.nome}</span>
+                            {u.id === currentUser?.id && (
+                              <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">
+                                Você
+                              </span>
+                            )}
+                            {!u.ativo && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">
+                                <Ban className="w-2.5 h-2.5" />
+                                Inativo (Bloqueado)
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-[#57534E]">
                           {u.email}
@@ -414,7 +473,12 @@ export default function UsuariosPage() {
                           )}
                         </td>
                         <td className="py-3.5 px-4">
-                          {isPending ? (
+                          {!u.ativo ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-800 border border-red-200">
+                              <Ban className="w-3 h-3 text-red-600" />
+                              Login Bloqueado
+                            </span>
+                          ) : isPending ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
                               <Clock className="w-3 h-3 text-amber-600" />
                               Aguardando Definição
@@ -430,9 +494,9 @@ export default function UsuariosPage() {
                           <div className="inline-flex items-center justify-end gap-2">
                             <button
                               type="button"
-                              disabled={isResetting}
+                              disabled={isResetting || !u.ativo}
                               onClick={() => handleResetPassword(u)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#F5F5F4] hover:bg-[#E7E5E4] text-[#1C1917] border border-[#D6D3D1] text-[11px] font-semibold transition-colors"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#F5F5F4] hover:bg-[#E7E5E4] disabled:opacity-40 text-[#1C1917] border border-[#D6D3D1] text-[11px] font-semibold transition-colors"
                               title="Enviar link de redefinição de senha para o e-mail do usuário"
                             >
                               {isResetting ? (
@@ -446,9 +510,29 @@ export default function UsuariosPage() {
                             {u.id !== currentUser?.id && (
                               <button
                                 type="button"
+                                onClick={() => handleToggleActive(u)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded border text-[11px] font-semibold transition-colors ${
+                                  u.ativo
+                                    ? "bg-white hover:bg-amber-50 text-amber-800 border-amber-300"
+                                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                                }`}
+                                title={
+                                  u.ativo
+                                    ? "Inativar acesso de login mantendo histórico"
+                                    : "Reativar acesso de login"
+                                }
+                              >
+                                <Power className="w-3 h-3" />
+                                {u.ativo ? "Inativar" : "Reativar"}
+                              </button>
+                            )}
+
+                            {u.id !== currentUser?.id && (
+                              <button
+                                type="button"
                                 onClick={() => handleDelete(u)}
                                 className="text-red-600 hover:text-red-800 p-1.5 rounded hover:bg-red-50 transition-colors"
-                                title="Remover usuário"
+                                title="Excluir usuário (permitido apenas se não possuir histórico comercial)"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
