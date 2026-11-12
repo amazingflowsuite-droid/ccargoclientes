@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { cleanCNPJ, formatCNPJ, getCNPJRaiz, formatPhone } from "../src/lib/utils";
-import { checkCNPJCollision } from "../src/lib/store";
+import { checkCNPJCollision, createAccount } from "../src/lib/store";
 
 describe("CNPJ e Utilitários de Entrada (Utils)", () => {
   it("deve limpar pontuações de CNPJ deixando apenas dígitos", () => {
@@ -51,6 +51,47 @@ describe("Regra Anti-Colisão de CNPJ (checkCNPJCollision)", () => {
     expect(res.has_exact_collision).toBe(false);
     expect(res.has_related_collision).toBe(false);
     expect(res.exact_match).toBeNull();
+  });
+
+  it("deve identificar colisão exata de CNPJ com lead em andamento no pipeline (US-11)", async () => {
+    // 55443322000100 = Metalúrgica do Sul (Lead em 'proposta_enviada')
+    const res = await checkCNPJCollision("55.443.322/0001-00");
+    expect(res.has_exact_collision).toBe(true);
+    expect(res.exact_match?.status).toBe("lead");
+    expect(res.exact_match?.estagio).toBe("proposta_enviada");
+    expect(res.exact_match?.sdr_responsavel_nome).toBeTruthy();
+  });
+
+  it("deve impedir criação de conta duplicada para lead ativo ou cliente ativo (US-11)", async () => {
+    // Tentativa com CNPJ de lead em andamento
+    await expect(
+      createAccount({
+        cnpj: "55.443.322/0001-00",
+        cnpj_formatado: "55.443.322/0001-00",
+        razao_social: "METALURGICA DO SUL DUPLICADA",
+        status: "lead",
+        estagio: "prospeccao_inicial",
+        tipo_carga: "Lotação (FTL)",
+        rotas_principais: [],
+        tipos_veiculos: [],
+        sdr_responsavel_nome: "Outro Operador",
+      })
+    ).rejects.toThrow(/oportunidade em andamento/i);
+
+    // Tentativa com CNPJ de cliente ativo
+    await expect(
+      createAccount({
+        cnpj: "12.345.678/0001-90",
+        cnpj_formatado: "12.345.678/0001-90",
+        razao_social: "AMBEV DUPLICADA",
+        status: "lead",
+        estagio: "prospeccao_inicial",
+        tipo_carga: "Lotação (FTL)",
+        rotas_principais: [],
+        tipos_veiculos: [],
+        sdr_responsavel_nome: "Outro Operador",
+      })
+    ).rejects.toThrow(/cliente ativo/i);
   });
 });
 

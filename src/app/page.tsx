@@ -145,6 +145,18 @@ export default function DashboardKanbanPage() {
     try {
       const data = await fetchAllAccounts();
       setAccounts(data);
+
+      // Auto-abrir modal caso venha direcionado por leadId (US-11)
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const leadId = params.get("leadId");
+        if (leadId) {
+          const target = data.find((a) => a.id === leadId);
+          if (target) {
+            handleOpenLeadDetails(target);
+          }
+        }
+      }
     } finally {
       setLoading(false);
     }

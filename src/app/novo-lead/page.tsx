@@ -158,11 +158,19 @@ export default function NovoLeadPage() {
     );
   }
 
-  // Bloqueio Rígido se for cliente ativo (US-01)
-  const isStrictBlocked = Boolean(
+  // Bloqueio Rígido se for cliente ativo (US-01) ou lead em andamento no pipeline (US-11)
+  const isClienteAtivo = Boolean(
     collisionResult?.has_exact_collision &&
       collisionResult.exact_match?.status === "cliente_ativo"
   );
+
+  const isLeadInPipeline = Boolean(
+    collisionResult?.has_exact_collision &&
+      collisionResult.exact_match?.status === "lead" &&
+      collisionResult.exact_match?.estagio !== "perdido"
+  );
+
+  const isStrictBlocked = isClienteAtivo || isLeadInPipeline;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -200,7 +208,7 @@ export default function NovoLeadPage() {
       router.push("/");
     } catch (err) {
       console.error(err);
-      alert("Erro ao cadastrar lead. Tente novamente.");
+      alert(err instanceof Error ? err.message : "Erro ao cadastrar lead. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
@@ -581,13 +589,17 @@ export default function NovoLeadPage() {
             type="submit"
             disabled={isSaving || isStrictBlocked}
             className={`px-6 py-2.5 rounded-md text-sm font-semibold text-white shadow-sm transition-all focus-ring ${
-              isStrictBlocked
-                ? "bg-red-400 cursor-not-allowed opacity-75"
+              isClienteAtivo
+                ? "bg-red-400 cursor-not-allowed opacity-80"
+                : isLeadInPipeline
+                ? "bg-amber-600 cursor-not-allowed opacity-85"
                 : "bg-[#0D9488] hover:bg-[#0F766E]"
             }`}
           >
-            {isStrictBlocked ? (
+            {isClienteAtivo ? (
               "⛔ Contato Bloqueado (Cliente da Carteira)"
+            ) : isLeadInPipeline ? (
+              "⛔ Prospecção Bloqueada (Lead em Andamento)"
             ) : isSaving ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" />

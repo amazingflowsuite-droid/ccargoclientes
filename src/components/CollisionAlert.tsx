@@ -1,7 +1,18 @@
 import React from "react";
+import Link from "next/link";
 import { CollisionCheckResult } from "@/types";
-import { ShieldAlert, AlertTriangle, Info, CheckCircle2, Building2 } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Info, CheckCircle2, Building2, ExternalLink } from "lucide-react";
 import { formatCNPJ } from "@/lib/utils";
+
+const STAGE_LABELS: Record<string, string> = {
+  prospeccao_inicial: "1. Primeiro Contato",
+  qualificacao_logistica: "2. Perfil & Frota",
+  cotacao_frete: "3. Cotação de Frete",
+  proposta_enviada: "4. Proposta Enviada",
+  negociacao: "5. Negociação",
+  fechado_ganho: "6. Fechado / Ganho",
+  perdido: "Perdido",
+};
 
 interface CollisionAlertProps {
   collision: CollisionCheckResult | null;
@@ -78,17 +89,87 @@ export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, check
     }
 
     if (exact_match.status === "lead") {
+      const isLeadPerdido = exact_match.estagio === "perdido";
+
+      if (isLeadPerdido) {
+        return (
+          <div className="p-4 rounded-md border border-slate-300 bg-slate-50 text-slate-800 shadow-sm animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1.5 w-full">
+                <h4 className="font-bold text-sm text-slate-900">
+                  LEAD ANTERIOR ENCERRADO / PERDIDO
+                </h4>
+                <p className="text-xs text-slate-700">
+                  Esta conta já foi trabalhada anteriormente por <strong>{exact_match.sdr_responsavel_nome || "outro operador"}</strong>, porém foi finalizada como perdida. Você pode dar continuidade ou cadastrar nova oportunidade se houver demanda atual.
+                </p>
+                <div className="pt-1">
+                  <Link
+                    href={`/?leadId=${exact_match.id}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium text-xs transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Consultar Histórico no Funil
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const stageName =
+        STAGE_LABELS[exact_match.estagio || "prospeccao_inicial"] || exact_match.estagio;
+
       return (
-        <div className="p-4 rounded-md border border-blue-300 bg-blue-50 text-blue-900 shadow-sm animate-in fade-in duration-200">
+        <div className="p-4 rounded-md border-2 border-amber-400 bg-amber-50 text-amber-950 shadow-sm animate-in fade-in duration-200">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <h4 className="font-bold text-sm text-blue-800">
-                LEAD JÁ CADASTRADO NO PIPELINE
-              </h4>
-              <p className="text-xs text-blue-800">
-                Esta conta já está sendo prospectada por <strong>{exact_match.sdr_responsavel_nome || "outro operador"}</strong> no estágio <strong>{exact_match.estagio}</strong>.
-              </p>
+            <ShieldAlert className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="space-y-2 w-full">
+              <div>
+                <h4 className="font-bold text-base text-amber-900 flex items-center gap-2">
+                  ⛔ PROSPECÇÃO IMPEDIDA: LEAD JÁ EM ANDAMENTO NO PIPELINE
+                </h4>
+                <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
+                  Esta empresa já possui uma oportunidade ativa em prospecção/negociação. Para evitar duplicidade e conflito de canal, <strong>não é permitido cadastrar outro lead para o mesmo CNPJ</strong> enquanto este estiver em aberto.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/90 rounded border border-amber-200 text-xs space-y-1.5 text-slate-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Razão Social</span>
+                    <strong className="text-slate-900">{exact_match.razao_social}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">CNPJ</span>
+                    <strong className="font-mono text-slate-900">{formatCNPJ(exact_match.cnpj)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">SDR / Operador Responsável</span>
+                    <span className="font-semibold text-amber-800">{exact_match.sdr_responsavel_nome || "Comercial"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Estágio Atual no Funil</span>
+                    <span className="inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold text-[11px]">
+                      {stageName}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-1 flex flex-wrap items-center gap-3">
+                <Link
+                  href={`/?leadId=${exact_match.id}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-700 hover:bg-amber-800 text-white font-semibold text-xs transition-colors shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Visualizar Lead no Funil
+                </Link>
+                <span className="text-[11px] text-amber-800 italic">
+                  💡 Caso necessite atuar nesta conta, alinhe previamente com o operador responsável.
+                </span>
+              </div>
             </div>
           </div>
         </div>

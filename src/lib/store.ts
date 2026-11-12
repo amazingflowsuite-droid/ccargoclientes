@@ -1106,6 +1106,24 @@ export async function createAccount(
   const formatted = formatCNPJ(clean);
   const initialStage = accountData.estagio || "prospeccao_inicial";
 
+  // US-01 & US-11: Trava de integridade anti-duplicidade na persistência
+  const collision = await checkCNPJCollision(clean);
+  if (collision.has_exact_collision && collision.exact_match) {
+    if (collision.exact_match.status === "cliente_ativo") {
+      throw new Error("CNPJ já é cliente ativo da CCargo. Prospecção bloqueada.");
+    }
+    if (
+      collision.exact_match.status === "lead" &&
+      collision.exact_match.estagio !== "perdido"
+    ) {
+      throw new Error(
+        `CNPJ já possui oportunidade em andamento com ${
+          collision.exact_match.sdr_responsavel_nome || "outro operador"
+        }. Prospecção concorrente bloqueada.`
+      );
+    }
+  }
+
   const payload = {
     ...accountData,
     cnpj: clean,
