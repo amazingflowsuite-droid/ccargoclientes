@@ -9,12 +9,14 @@ import {
   UserRole,
 } from "@/types";
 import { cleanCNPJ, formatCNPJ, getCNPJRaiz } from "./utils";
+import { ORDERED_STAGE_KEYS, normalizeLeadStage } from "./kanban-stages";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
 const STORAGE_KEY_ACCOUNTS = "ccargo_accounts_v2";
 const STORAGE_KEY_LOGS = "ccargo_contact_logs_v2";
 const STORAGE_KEY_NOTES_OVERLAY = "ccargo_notes_overlay_v1";
 const STORAGE_KEY_STAGE_OVERLAY = "ccargo_stage_history_overlay_v1";
+const STORAGE_KEY_KANBAN_ORDER_OVERLAY = "ccargo_kanban_order_overlay_v1";
 const STORAGE_KEY_USERS = "ccargo_app_users_v1";
 const STORAGE_KEY_USER_SECURITY_OVERLAY = "ccargo_user_security_overlay_v1";
 const STORAGE_KEY_AUTH_SESSION = "ccargo_auth_session_v1";
@@ -53,7 +55,7 @@ const INITIAL_ACCOUNTS: Account[] = [
     razao_social: "TAUSTE SUPERMERCADOS LTDA",
     nome_fantasia: "Tauste Supermercados (CD Central)",
     status: "lead",
-    estagio: "cotacao_frete",
+    estagio: "negociacao",
     contato_nome: "Henrique Martins",
     contato_cargo: "Gerente de Logística e Recebimento",
     telefone: "(14) 99711-2233",
@@ -70,7 +72,7 @@ const INITIAL_ACCOUNTS: Account[] = [
     stage_history: {
       prospeccao_inicial: new Date(Date.now() - 8 * DAY_MS).toISOString(),
       qualificacao_logistica: new Date(Date.now() - 5 * DAY_MS).toISOString(),
-      cotacao_frete: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+      negociacao: new Date(Date.now() - 2 * DAY_MS).toISOString(),
     },
     created_at: new Date(Date.now() - 8 * DAY_MS).toISOString(),
     updated_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
@@ -97,9 +99,8 @@ const INITIAL_ACCOUNTS: Account[] = [
     stage_history: {
       prospeccao_inicial: new Date(Date.now() - 60 * DAY_MS).toISOString(),
       qualificacao_logistica: new Date(Date.now() - 56 * DAY_MS).toISOString(),
-      cotacao_frete: new Date(Date.now() - 52 * DAY_MS).toISOString(),
+      negociacao: new Date(Date.now() - 52 * DAY_MS).toISOString(),
       proposta_enviada: new Date(Date.now() - 48 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 44 * DAY_MS).toISOString(),
       fechado_ganho: new Date(Date.now() - 41 * DAY_MS).toISOString(),
     },
     fechado_em: new Date(Date.now() - 41 * DAY_MS).toISOString(),
@@ -130,7 +131,7 @@ const INITIAL_ACCOUNTS: Account[] = [
     stage_history: {
       prospeccao_inicial: new Date(Date.now() - 20 * DAY_MS).toISOString(),
       qualificacao_logistica: new Date(Date.now() - 18 * DAY_MS).toISOString(),
-      cotacao_frete: new Date(Date.now() - 16 * DAY_MS).toISOString(),
+      negociacao: new Date(Date.now() - 16 * DAY_MS).toISOString(),
       perdido: new Date(Date.now() - 15 * DAY_MS).toISOString(),
     },
     created_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
@@ -161,7 +162,7 @@ const INITIAL_ACCOUNTS: Account[] = [
     stage_history: {
       prospeccao_inicial: new Date(Date.now() - 9 * DAY_MS).toISOString(),
       qualificacao_logistica: new Date(Date.now() - 7 * DAY_MS).toISOString(),
-      cotacao_frete: new Date(Date.now() - 4 * DAY_MS).toISOString(),
+      negociacao: new Date(Date.now() - 4 * DAY_MS).toISOString(),
       proposta_enviada: new Date(Date.now() - 2 * DAY_MS).toISOString(),
     },
     created_at: new Date(Date.now() - 9 * DAY_MS).toISOString(),
@@ -192,9 +193,8 @@ const INITIAL_ACCOUNTS: Account[] = [
     stage_history: {
       prospeccao_inicial: new Date(Date.now() - 14 * DAY_MS).toISOString(),
       qualificacao_logistica: new Date(Date.now() - 11 * DAY_MS).toISOString(),
-      cotacao_frete: new Date(Date.now() - 8 * DAY_MS).toISOString(),
-      proposta_enviada: new Date(Date.now() - 6 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+      negociacao: new Date(Date.now() - 8 * DAY_MS).toISOString(),
+      proposta_enviada: new Date(Date.now() - 4 * DAY_MS).toISOString(),
       fechado_ganho: new Date(Date.now() - 1 * DAY_MS).toISOString(),
     },
     fechado_em: new Date(Date.now() - 1 * DAY_MS).toISOString(),
@@ -912,6 +912,28 @@ function saveNoteOverlay(accountId: string, cnpj: string, note: string): void {
   }
 }
 
+function getOrderOverlay(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_KANBAN_ORDER_OVERLAY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveOrderOverlay(accountId: string, cnpj: string, order: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    const map = getOrderOverlay();
+    map[accountId] = order;
+    if (cnpj) map[cleanCNPJ(cnpj)] = order;
+    localStorage.setItem(STORAGE_KEY_KANBAN_ORDER_OVERLAY, JSON.stringify(map));
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 function getStageHistoryOverlay(): Record<string, Partial<Record<LeadStage, string>>> {
   if (typeof window === "undefined") return {};
   try {
@@ -944,28 +966,20 @@ function recordStageTransition(accountId: string, cnpj: string, stage: LeadStage
 }
 
 function buildSynthesizedStageHistory(acc: Account): Partial<Record<LeadStage, string>> {
-  const orderedStages: LeadStage[] = [
-    "prospeccao_inicial",
-    "qualificacao_logistica",
-    "cotacao_frete",
-    "proposta_enviada",
-    "negociacao",
-    "fechado_ganho",
-  ];
   const createdMs = new Date(acc.created_at).getTime() || Date.now() - 5 * DAY_MS;
   const updatedMs = new Date(acc.updated_at || acc.created_at).getTime() || Date.now();
   const currentStage =
     acc.status === "cliente_ativo"
       ? "fechado_ganho"
-      : acc.estagio || "prospeccao_inicial";
+      : normalizeLeadStage(acc.estagio);
 
-  const idx = Math.max(0, orderedStages.indexOf(currentStage));
+  const idx = Math.max(0, ORDERED_STAGE_KEYS.indexOf(currentStage));
   const totalSpan = Math.max(DAY_MS, updatedMs - createdMs);
   const stepMs = idx > 0 ? totalSpan / idx : 0;
 
   const history: Partial<Record<LeadStage, string>> = {};
   for (let i = 0; i <= idx; i++) {
-    const st = orderedStages[i];
+    const st = ORDERED_STAGE_KEYS[i];
     history[st] = new Date(createdMs + i * stepMs).toISOString();
   }
   return history;
@@ -1007,27 +1021,39 @@ function saveLocalAccounts(accounts: Account[]): void {
 function mergeWithOverlay(accounts: Account[]): Account[] {
   const overlay = getNotesOverlay();
   const stageOverlay = getStageHistoryOverlay();
+  const orderOverlay = getOrderOverlay();
 
   return accounts.map((acc) => {
     const clean = cleanCNPJ(acc.cnpj);
     const seedMatch = INITIAL_ACCOUNTS.find((s) => cleanCNPJ(s.cnpj) === clean);
     const overlayNote = overlay[acc.id] ?? overlay[clean];
+    const overlayOrder = orderOverlay[acc.id] ?? orderOverlay[clean];
     const customStages = stageOverlay[acc.id] || stageOverlay[clean] || {};
     const baseStages =
       acc.stage_history || seedMatch?.stage_history || buildSynthesizedStageHistory(acc);
 
+    const mergedHistory = {
+      ...baseStages,
+      ...customStages,
+    };
+    if (mergedHistory.cotacao_frete && !mergedHistory.negociacao) {
+      mergedHistory.negociacao = mergedHistory.cotacao_frete;
+    }
+
     return {
       ...acc,
+      estagio: acc.estagio ? normalizeLeadStage(acc.estagio) : acc.estagio,
+      kanban_order:
+        typeof acc.kanban_order === "number" && Number.isFinite(acc.kanban_order)
+          ? acc.kanban_order
+          : overlayOrder,
       observacoes_importantes:
         overlayNote !== undefined
           ? overlayNote
           : acc.observacoes_importantes || seedMatch?.observacoes_importantes || undefined,
       sdr_responsavel_nome:
         acc.sdr_responsavel_nome || seedMatch?.sdr_responsavel_nome || "Ana Paula (Comercial)",
-      stage_history: {
-        ...baseStages,
-        ...customStages,
-      },
+      stage_history: mergedHistory,
       fechado_em:
         acc.fechado_em ||
         seedMatch?.fechado_em ||
@@ -1193,6 +1219,9 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
   if (updates.observacoes_importantes !== undefined) {
     saveNoteOverlay(id, updates.cnpj || "", updates.observacoes_importantes);
   }
+  if (updates.kanban_order !== undefined) {
+    saveOrderOverlay(id, updates.cnpj || "", updates.kanban_order);
+  }
   if (updates.estagio) {
     recordStageTransition(id, updates.cnpj || "", updates.estagio);
   }
@@ -1209,10 +1238,22 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
 
       if (!error && data) {
         return mergeWithOverlay([data as Account])[0];
-      } else if (error && dbUpdates.observacoes_importantes !== undefined) {
-        const { observacoes_importantes, ...rest } = dbUpdates;
+      } else if (error) {
+        const {
+          observacoes_importantes: _obs,
+          kanban_order: _order,
+          ...rest
+        } = dbUpdates;
         if (Object.keys(rest).length > 0) {
-          await supabase.from("accounts").update(rest).eq("id", id);
+          const retry = await supabase
+            .from("accounts")
+            .update(rest)
+            .eq("id", id)
+            .select()
+            .single();
+          if (!retry.error && retry.data) {
+            return mergeWithOverlay([retry.data as Account])[0];
+          }
         }
       }
     } catch (err) {

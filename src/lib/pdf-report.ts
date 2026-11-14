@@ -1,5 +1,6 @@
-import { Account, ContactLog, LeadStage } from "@/types";
+import { Account, ContactLog } from "@/types";
 import { formatCNPJ } from "./utils";
+import { getStageLabel } from "./kanban-stages";
 
 const CCARGO_LOGO_SVG_HTML = `
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
@@ -22,26 +23,7 @@ function escapeHtml(str?: string | null): string {
     .replace(/'/g, "&#039;");
 }
 
-export function getStageLabel(stage?: LeadStage): string {
-  switch (stage) {
-    case "prospeccao_inicial":
-      return "1. Primeiro Contato";
-    case "qualificacao_logistica":
-      return "2. Perfil & Frota";
-    case "cotacao_frete":
-      return "3. Cotação de Frete";
-    case "proposta_enviada":
-      return "4. Proposta Enviada";
-    case "negociacao":
-      return "5. Negociação";
-    case "fechado_ganho":
-      return "6. Fechado / Ganho";
-    case "perdido":
-      return "Perdido / Sem Fit";
-    default:
-      return "1. Primeiro Contato";
-  }
-}
+export { getStageLabel };
 
 export function getStatusLabel(account: Account): string {
   if (account.status === "cliente_ativo") return "Cliente Ativo da Carteira";
@@ -768,9 +750,9 @@ export function generateMonthlyReportPDF(payload: MonthlyReportPayload): void {
             <div class="kpi-sub">${metrics.contatosComSucesso} atendidos | ${metrics.contatosSemResposta} sem resposta</div>
           </div>
           <div class="kpi-box">
-            <div class="kpi-title">Pediram Cotação</div>
+            <div class="kpi-title">Em Negociação / Proposta</div>
             <div class="kpi-val" style="color: #B45309;">${metrics.pediramCotacao}</div>
-            <div class="kpi-sub">Em cotação, proposta ou negociação</div>
+            <div class="kpi-sub">Em negociação, proposta ou fechamento</div>
           </div>
           <div class="kpi-box">
             <div class="kpi-title">Negócios Fechados</div>

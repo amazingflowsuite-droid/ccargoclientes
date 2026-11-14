@@ -1,5 +1,6 @@
 import React from "react";
 import { AccountStatus, LeadStage } from "@/types";
+import { normalizeLeadStage } from "@/lib/kanban-stages";
 import { ShieldCheck, AlertOctagon, UserCheck, Clock, FileText, TrendingUp, CheckCircle, XCircle } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -46,7 +47,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, stage, size = 
 
   // Se for estágio no funil
   if (stage) {
-    switch (stage) {
+    const normalized = normalizeLeadStage(stage);
+    switch (normalized) {
       case "prospeccao_inicial":
         return (
           <span className={`inline-flex items-center gap-1 rounded-sm border bg-slate-100 text-slate-700 border-slate-200 ${paddingClass}`}>
@@ -58,14 +60,14 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, stage, size = 
         return (
           <span className={`inline-flex items-center gap-1 rounded-sm border bg-blue-50 text-blue-700 border-blue-200 ${paddingClass}`}>
             <FileText className="w-3 h-3" />
-            2. Perfil de Frota / Carga
+            2. Oportunidade de Negócio
           </span>
         );
-      case "cotacao_frete":
+      case "negociacao":
         return (
           <span className={`inline-flex items-center gap-1 rounded-sm border bg-amber-50 text-amber-800 border-amber-200 ${paddingClass}`}>
             <TrendingUp className="w-3 h-3" />
-            3. Em Cotação
+            3. Negociação
           </span>
         );
       case "proposta_enviada":
@@ -75,18 +77,11 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, stage, size = 
             4. Proposta Enviada
           </span>
         );
-      case "negociacao":
-        return (
-          <span className={`inline-flex items-center gap-1 rounded-sm border bg-emerald-50 text-emerald-800 border-emerald-200 ${paddingClass}`}>
-            <Clock className="w-3 h-3" />
-            5. Negociação
-          </span>
-        );
       case "fechado_ganho":
         return (
           <span className={`inline-flex items-center gap-1 rounded-sm border bg-[#ECFDF5] text-[#047857] border-[#A7F3D0] ${paddingClass}`}>
             <CheckCircle className="w-3 h-3" />
-            Ganho (Novo Cliente)
+            5. Fechado / Ganho
           </span>
         );
       case "perdido":

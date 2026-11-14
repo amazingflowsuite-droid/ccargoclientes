@@ -22,6 +22,17 @@ import {
   AppUser,
 } from "@/types";
 import { cleanCNPJ } from "@/lib/utils";
+import {
+  KANBAN_STAGES,
+  ORDERED_STAGE_KEYS,
+  normalizeLeadStage,
+} from "@/lib/kanban-stages";
+import {
+  sortStageLeads,
+  computeDropOrderUpdates,
+  DropPosition,
+  DropTarget,
+} from "@/lib/kanban-order";
 import { KanbanCard } from "@/components/kanban/KanbanCard";
 import { LeadDetailsModal } from "@/components/kanban/LeadDetailsModal";
 import { DisqualifyModal } from "@/components/kanban/DisqualifyModal";
@@ -36,45 +47,6 @@ import {
   BarChart3,
   ArrowUpRight,
 } from "lucide-react";
-
-const STAGES: { key: LeadStage; title: string; color: string; badgeColor: string }[] = [
-  {
-    key: "prospeccao_inicial",
-    title: "1. Primeiro Contato",
-    color: "border-slate-400",
-    badgeColor: "bg-slate-100 text-slate-800",
-  },
-  {
-    key: "qualificacao_logistica",
-    title: "2. Perfil & Frota",
-    color: "border-blue-500",
-    badgeColor: "bg-blue-100 text-blue-800",
-  },
-  {
-    key: "cotacao_frete",
-    title: "3. Cotação de Frete",
-    color: "border-amber-500",
-    badgeColor: "bg-amber-100 text-amber-800",
-  },
-  {
-    key: "proposta_enviada",
-    title: "4. Proposta Enviada",
-    color: "border-purple-500",
-    badgeColor: "bg-purple-100 text-purple-800",
-  },
-  {
-    key: "negociacao",
-    title: "5. Negociação",
-    color: "border-emerald-500",
-    badgeColor: "bg-emerald-100 text-emerald-800",
-  },
-  {
-    key: "fechado_ganho",
-    title: "6. Fechado / Ganho",
-    color: "border-teal-600",
-    badgeColor: "bg-teal-100 text-teal-900",
-  },
-];
 
 export default function DashboardKanbanPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -112,6 +84,11 @@ export default function DashboardKanbanPage() {
   // Drag and Drop State
   const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<LeadStage | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{
+    stageKey: LeadStage;
+    cardId: string;
+    position: DropPosition;
+  } | null>(null);
 
   useEffect(() => {
     setAuthUser(getAuthenticatedUser());
@@ -127,6 +104,7 @@ export default function DashboardKanbanPage() {
     const clearDragState = () => {
       setDraggedAccountId(null);
       setDragOverStage(null);
+      setDropIndicator(null);
     };
     window.addEventListener("ccargo-operator-changed", handleAuthOrOpChange);
     window.addEventListener("ccargo-auth-changed", handleAuthOrOpChange);
@@ -233,29 +211,60 @@ export default function DashboardKanbanPage() {
     if (dragOverStage !== stageKey) {
       setDragOverStage(stageKey);
     }
+    if (dropIndicator !== null) {
+      setDropIndicator(null);
+    }
+  }
+
+  function handleCardDragOver(e: React.DragEvent, stageKey: LeadStage, cardId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverStage !== stageKey) {
+      setDragOverStage(stageKey);
+    }
+    if (draggedAccountId === cardId) {
+      if (dropIndicator !== null) setDropIndicator(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position: DropPosition = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    if (
+      dropIndicator?.stageKey !== stageKey ||
+      dropIndicator?.cardId !== cardId ||
+      dropIndicator?.position !== position
+    ) {
+      setDropIndicator({ stageKey, cardId, position });
+    }
   }
 
   function handleDragLeave(stageKey: LeadStage) {
     if (dragOverStage === stageKey) {
       setDragOverStage(null);
     }
+    if (dropIndicator?.stageKey === stageKey) {
+      setDropIndicator(null);
+    }
   }
 
-  async function handleDrop(e: React.DragEvent, targetStage: LeadStage) {
+  async function handleDrop(
+    e: React.DragEvent,
+    targetStage: LeadStage,
+    explicitTarget?: DropTarget
+  ) {
     e.preventDefault();
+    e.stopPropagation();
     const accountId = draggedAccountId || e.dataTransfer.getData("text/plain");
     setDraggedAccountId(null);
     setDragOverStage(null);
+    setDropIndicator(null);
     if (!accountId) return;
 
     const account = accounts.find((a) => a.id === accountId);
-    if (!account || account.estagio === targetStage) return;
+    if (!account) return;
 
-    setAccounts((prev) =>
-      prev.map((a) => (a.id === accountId ? { ...a, estagio: targetStage } : a))
-    );
-
-    if (targetStage === "fechado_ganho") {
+    if (targetStage === "fechado_ganho" && account.estagio !== "fechado_ganho") {
       const turnIntoClient = confirm(
         `Parabéns pelo fechamento com ${account.razao_social}!\nDeseja promovê-lo a CLIENTE ATIVO da carteira (blindando contra contatos de outros operadores)?`
       );
@@ -270,23 +279,60 @@ export default function DashboardKanbanPage() {
       }
     }
 
-    await updateAccount(account.id, { estagio: targetStage });
+    const targetStageLeads = accounts.filter(
+      (a) => a.status === "lead" && normalizeLeadStage(a.estagio) === targetStage
+    );
+
+    const updates = computeDropOrderUpdates({
+      draggedAccount: account,
+      targetStage,
+      targetStageLeads,
+      dropTarget: explicitTarget,
+    });
+
+    if (updates.length === 0) return;
+
+    const updatesMap = new Map(updates.map((u) => [u.id, u]));
+    setAccounts((prev) =>
+      prev.map((a) => {
+        const u = updatesMap.get(a.id);
+        if (!u) return a;
+        return {
+          ...a,
+          ...(u.estagio ? { estagio: u.estagio } : {}),
+          kanban_order: u.kanban_order,
+        };
+      })
+    );
+
+    await Promise.all(
+      updates.map((u) =>
+        updateAccount(u.id, {
+          cnpj: u.cnpj,
+          kanban_order: u.kanban_order,
+          ...(u.estagio ? { estagio: u.estagio } : {}),
+        })
+      )
+    );
     loadData();
   }
 
-  async function handleAdvanceStage(account: Account) {
-    const stageOrder: LeadStage[] = [
-      "prospeccao_inicial",
-      "qualificacao_logistica",
-      "cotacao_frete",
-      "proposta_enviada",
-      "negociacao",
-      "fechado_ganho",
-    ];
+  function handleCardDrop(e: React.DragEvent, stageKey: LeadStage, cardId: string) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const fallbackPosition: DropPosition =
+      e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    const position =
+      dropIndicator?.stageKey === stageKey && dropIndicator?.cardId === cardId
+        ? dropIndicator.position
+        : fallbackPosition;
 
-    const currentIndex = stageOrder.indexOf(account.estagio || "prospeccao_inicial");
-    if (currentIndex < stageOrder.length - 1) {
-      const nextStage = stageOrder[currentIndex + 1];
+    handleDrop(e, stageKey, { cardId, position });
+  }
+
+  async function handleAdvanceStage(account: Account) {
+    const currentIndex = ORDERED_STAGE_KEYS.indexOf(normalizeLeadStage(account.estagio));
+    if (currentIndex !== -1 && currentIndex < ORDERED_STAGE_KEYS.length - 1) {
+      const nextStage = ORDERED_STAGE_KEYS[currentIndex + 1];
 
       if (nextStage === "fechado_ganho") {
         const turnIntoClient = confirm(
@@ -478,18 +524,18 @@ export default function DashboardKanbanPage() {
       <div className="flex items-center justify-between text-xs text-[#57534E] px-1">
         <span className="inline-flex items-center gap-1.5 text-[#0F766E] font-medium">
           <GripVertical className="w-3.5 h-3.5 text-[#0D9488]" />
-          Arraste os cards para mudar de etapa ou clique sobre o card para abrir a Ficha Completa, Ligações e PDF
+          Arraste os cards para mudar de etapa ou reordenar na coluna • Clique sobre o card para abrir a Ficha Completa, Ligações e PDF
         </span>
         <span className="font-semibold text-[#1C1917]">
           Exibindo {filteredLeads.length} oportunidade(s)
         </span>
       </div>
 
-      {/* KANBAN BOARD EM GRID DE 6 COLUNAS (ZERO BARRA DE ROLAGEM HORIZONTAL NO DESKTOP) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 items-start pb-6">
-        {STAGES.map((stage) => {
-          const stageLeads = filteredLeads.filter(
-            (l) => (l.estagio || "prospeccao_inicial") === stage.key
+      {/* KANBAN BOARD EM GRID DE 5 COLUNAS (ZERO BARRA DE ROLAGEM HORIZONTAL NO DESKTOP) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 items-start pb-6">
+        {KANBAN_STAGES.map((stage) => {
+          const stageLeads = sortStageLeads(
+            filteredLeads.filter((l) => normalizeLeadStage(l.estagio) === stage.key)
           );
           const isOver = dragOverStage === stage.key;
 
@@ -542,9 +588,20 @@ export default function DashboardKanbanPage() {
                       lead={lead}
                       stageKey={stage.key}
                       isDragging={draggedAccountId === lead.id}
+                      dropIndicator={
+                        dropIndicator?.stageKey === stage.key && dropIndicator?.cardId === lead.id
+                          ? dropIndicator.position
+                          : null
+                      }
                       whatsAppUrl={getWhatsAppUrl(lead)}
                       onDragStart={handleDragStart}
-                      onDragEnd={() => setDraggedAccountId(null)}
+                      onDragEnd={() => {
+                        setDraggedAccountId(null);
+                        setDragOverStage(null);
+                        setDropIndicator(null);
+                      }}
+                      onCardDragOver={handleCardDragOver}
+                      onCardDrop={handleCardDrop}
                       onOpenDetails={handleOpenLeadDetails}
                     />
                   ))

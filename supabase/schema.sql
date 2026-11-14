@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   nome_fantasia TEXT,
   status account_status NOT NULL DEFAULT 'lead',
   estagio lead_stage DEFAULT 'prospeccao_inicial',
+  kanban_order DOUBLE PRECISION,
   
   -- Informações de Contato
   contato_nome TEXT,
@@ -134,8 +135,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Migração Segura (caso a tabela já exista sem a coluna observacoes_importantes)
+-- Migração Segura (caso a tabela já exista sem as colunas opcionais)
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS observacoes_importantes TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kanban_order DOUBLE PRECISION;
 
 -- Índices de Alta Performance
 CREATE INDEX IF NOT EXISTS idx_accounts_cnpj ON accounts(cnpj);

@@ -17,6 +17,13 @@ import {
 } from "@/lib/pdf-report";
 import { Account, ContactLog, LeadStage, OperatorUser, AppUser } from "@/types";
 import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
+import {
+  KANBAN_STAGES,
+  ACTIVE_PIPELINE_STAGES,
+  ORDERED_STAGE_KEYS,
+  NEGOTIATION_AND_PROPOSAL_STAGES,
+  normalizeLeadStage,
+} from "@/lib/kanban-stages";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ArrowLeft,
@@ -44,57 +51,6 @@ const MONTHS = [
   { value: "2027-01", label: "Janeiro / 2027" },
   { value: "2027-02", label: "Fevereiro / 2027" },
   { value: "2027-03", label: "Março / 2027" },
-];
-
-const WORKFLOW_COLUMNS: {
-  key: LeadStage;
-  title: string;
-  shortTitle: string;
-  barColor: string;
-  badgeBg: string;
-}[] = [
-  {
-    key: "prospeccao_inicial",
-    title: "1. Primeiro Contato",
-    shortTitle: "1. 1º Contato",
-    barColor: "bg-slate-600",
-    badgeBg: "bg-slate-100 text-slate-800 border-slate-300",
-  },
-  {
-    key: "qualificacao_logistica",
-    title: "2. Perfil & Frota",
-    shortTitle: "2. Perfil & Frota",
-    barColor: "bg-blue-600",
-    badgeBg: "bg-blue-50 text-blue-800 border-blue-200",
-  },
-  {
-    key: "cotacao_frete",
-    title: "3. Cotação de Frete",
-    shortTitle: "3. Cotação",
-    barColor: "bg-amber-500",
-    badgeBg: "bg-amber-50 text-amber-900 border-amber-200",
-  },
-  {
-    key: "proposta_enviada",
-    title: "4. Proposta Enviada",
-    shortTitle: "4. Proposta",
-    barColor: "bg-purple-600",
-    badgeBg: "bg-purple-50 text-purple-800 border-purple-200",
-  },
-  {
-    key: "negociacao",
-    title: "5. Negociação",
-    shortTitle: "5. Negociação",
-    barColor: "bg-emerald-500",
-    badgeBg: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  },
-  {
-    key: "fechado_ganho",
-    title: "6. Fechado / Ganho",
-    shortTitle: "6. Fechado/Ganho",
-    barColor: "bg-teal-600",
-    badgeBg: "bg-teal-50 text-teal-900 border-teal-300",
-  },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -238,9 +194,7 @@ export default function RelatoriosPage() {
     const pediramCotacao = filteredAccounts.filter(
       (a) =>
         a.status === "lead" &&
-        ["cotacao_frete", "proposta_enviada", "negociacao", "fechado_ganho"].includes(
-          a.estagio || ""
-        )
+        NEGOTIATION_AND_PROPOSAL_STAGES.includes(normalizeLeadStage(a.estagio))
     ).length;
 
     const fecharamNegocio = filteredAccounts.filter(
@@ -290,9 +244,7 @@ export default function RelatoriosPage() {
       const hitRate = totalCalls > 0 ? Math.round((successCalls / totalCalls) * 100) : 0;
 
       const cotacoes = opAccounts.filter((a) =>
-        ["cotacao_frete", "proposta_enviada", "negociacao", "fechado_ganho"].includes(
-          a.estagio || ""
-        )
+        NEGOTIATION_AND_PROPOSAL_STAGES.includes(normalizeLeadStage(a.estagio))
       ).length;
 
       const fechados = opAccounts.filter(
@@ -348,21 +300,12 @@ export default function RelatoriosPage() {
   // US-18: CÁLCULO DE LEAD TIME & CYCLE TIME ABRANGENDO AS COLUNAS DO WORKFLOW
   // ==========================================================================
   const workflowTiming = useMemo(() => {
-    const orderedKeys: LeadStage[] = [
-      "prospeccao_inicial",
-      "qualificacao_logistica",
-      "cotacao_frete",
-      "proposta_enviada",
-      "negociacao",
-      "fechado_ganho",
-    ];
-
     const stageDurationsDays: Record<LeadStage, number[]> = {
       prospeccao_inicial: [],
       qualificacao_logistica: [],
       cotacao_frete: [],
-      proposta_enviada: [],
       negociacao: [],
+      proposta_enviada: [],
       fechado_ganho: [],
       perdido: [],
     };
@@ -388,10 +331,11 @@ export default function RelatoriosPage() {
       }
 
       // Calcula o Cycle Time em cada coluna pela qual o card passou
+      const currentStage = normalizeLeadStage(acc.estagio);
       const perStageDays: Partial<Record<LeadStage, number>> = {};
-      for (let i = 0; i < orderedKeys.length - 1; i++) {
-        const currKey = orderedKeys[i];
-        const nextKey = orderedKeys[i + 1];
+      for (let i = 0; i < ORDERED_STAGE_KEYS.length - 1; i++) {
+        const currKey = ORDERED_STAGE_KEYS[i];
+        const nextKey = ORDERED_STAGE_KEYS[i + 1];
         const tStart = hist[currKey] ? new Date(hist[currKey]!).getTime() : null;
         const tNext = hist[nextKey] ? new Date(hist[nextKey]!).getTime() : null;
 
@@ -399,7 +343,7 @@ export default function RelatoriosPage() {
           const d = Math.max(0.3, Number(((tNext - tStart) / DAY_MS).toFixed(1)));
           perStageDays[currKey] = d;
           stageDurationsDays[currKey].push(d);
-        } else if (tStart && acc.estagio === currKey) {
+        } else if (tStart && currentStage === currKey) {
           const d = Math.max(0.5, Number(((Math.max(tStart, endMs) - tStart) / DAY_MS).toFixed(1)));
           perStageDays[currKey] = d;
           stageDurationsDays[currKey].push(d);
@@ -414,7 +358,7 @@ export default function RelatoriosPage() {
       };
     });
 
-    const columnsCycleTime = WORKFLOW_COLUMNS.map((col) => {
+    const columnsCycleTime = KANBAN_STAGES.map((col) => {
       const samples = stageDurationsDays[col.key] || [];
       const avgDays =
         samples.length > 0
@@ -425,7 +369,7 @@ export default function RelatoriosPage() {
         (a) =>
           (col.key === "fechado_ganho" &&
             (a.estagio === "fechado_ganho" || a.status === "cliente_ativo")) ||
-          (a.status === "lead" && (a.estagio || "prospeccao_inicial") === col.key)
+          (a.status === "lead" && normalizeLeadStage(a.estagio) === col.key)
       ).length;
 
       return {
@@ -436,11 +380,9 @@ export default function RelatoriosPage() {
       };
     });
 
+    const activeCycleColumns = columnsCycleTime.filter((c) => c.key !== "fechado_ganho");
     const cycleSum = Number(
-      columnsCycleTime
-        .slice(0, 5)
-        .reduce((acc, c) => acc + c.avgDays, 0)
-        .toFixed(1)
+      activeCycleColumns.reduce((acc, c) => acc + c.avgDays, 0).toFixed(1)
     );
 
     const avgOpenLeadTime =
@@ -465,8 +407,8 @@ export default function RelatoriosPage() {
 
     const totalCycleSum = cycleSum;
 
-    // Identifica a etapa gargalo real (maior Cycle Time > 0 entre as colunas 1 a 5 no filtro)
-    const activeColumns = columnsCycleTime.slice(0, 5).filter((c) => c.avgDays > 0);
+    // Identifica a etapa gargalo real (maior Cycle Time > 0 entre as colunas ativas no filtro)
+    const activeColumns = activeCycleColumns.filter((c) => c.avgDays > 0);
     const bottleneckColumn =
       activeColumns.length > 0
         ? activeColumns.reduce((max, c) => (c.avgDays > max.avgDays ? c : max), activeColumns[0])
@@ -634,7 +576,7 @@ export default function RelatoriosPage() {
         <div className="bg-white p-5 rounded-lg border border-[#E7E5E4] shadow-subtle">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#78716C]">
-              Pediram Cotação
+              Em Negociação / Proposta
             </span>
             <TrendingUp className="w-4 h-4 text-amber-600" />
           </div>
@@ -642,7 +584,7 @@ export default function RelatoriosPage() {
             {metrics.pediramCotacao}
           </div>
           <div className="text-[11px] text-[#57534E] mt-1">
-            Leads em Cotação, Proposta ou Negociação
+            Leads em Negociação, Proposta ou Fechamento
           </div>
         </div>
 
@@ -748,7 +690,7 @@ export default function RelatoriosPage() {
                           Efetividade: {op.hitRate}%
                         </span>
                         <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
-                          {op.cotacoes} cotações
+                          {op.cotacoes} em negociação
                         </span>
                         <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 border border-teal-300 font-bold flex items-center gap-1">
                           <Award className="w-3 h-3 text-[#0D9488]" />
@@ -860,7 +802,7 @@ export default function RelatoriosPage() {
             </div>
             <p className="text-[11px] leading-relaxed">
               Das <strong>{metrics.totalEmpresasTrabalhadas}</strong> empresas trabalhadas no filtro,{" "}
-              <strong>{metrics.pediramCotacao}</strong> avançaram para cotação e{" "}
+              <strong>{metrics.pediramCotacao}</strong> avançaram para negociação e{" "}
               <strong>{metrics.fecharamNegocio}</strong> converteram em fechamento.
             </p>
           </div>
@@ -895,8 +837,8 @@ export default function RelatoriosPage() {
           </div>
         </div>
 
-        {/* Fluxo Horizontal de Cycle Time por Coluna (Colunas 1 a 6) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+        {/* Fluxo Horizontal de Cycle Time por Coluna (Colunas 1 a 5) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {workflowTiming.columnsCycleTime.map((col, index) => {
             const isClosedCol = col.key === "fechado_ganho";
             const isBottleneck =
@@ -990,8 +932,7 @@ export default function RelatoriosPage() {
           ) : (
             <div className="w-full h-6 rounded-md overflow-hidden flex border border-[#D6D3D1]">
               {workflowTiming.columnsCycleTime
-                .slice(0, 5)
-                .filter((col) => col.avgDays > 0)
+                .filter((col) => col.key !== "fechado_ganho" && col.avgDays > 0)
                 .map((col) => {
                   const pct = Math.max(
                     8,
@@ -1023,18 +964,18 @@ export default function RelatoriosPage() {
                 <tr>
                   <th className="py-2.5 px-3">Empresa</th>
                   <th className="py-2.5 px-3">Etapa Atual</th>
-                  <th className="py-2.5 px-3 text-center">1. 1º Contato</th>
-                  <th className="py-2.5 px-3 text-center">2. Perfil & Frota</th>
-                  <th className="py-2.5 px-3 text-center">3. Cotação</th>
-                  <th className="py-2.5 px-3 text-center">4. Proposta</th>
-                  <th className="py-2.5 px-3 text-center">5. Negociação</th>
+                  {ACTIVE_PIPELINE_STAGES.map((stage) => (
+                    <th key={stage.key} className="py-2.5 px-3 text-center">
+                      {stage.shortTitle}
+                    </th>
+                  ))}
                   <th className="py-2.5 px-3 text-right">Lead Time Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E7E5E4]">
                 {workflowTiming.accountTimings.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-[#A8A29E] italic">
+                    <td colSpan={7} className="py-8 text-center text-[#A8A29E] italic">
                       Nenhuma empresa encontrada para os filtros selecionados.
                     </td>
                   </tr>
@@ -1052,21 +993,14 @@ export default function RelatoriosPage() {
                             <StatusBadge status={acc.status} size="sm" />
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                          {perStageDays.prospeccao_inicial ? `${perStageDays.prospeccao_inicial}d` : "—"}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                          {perStageDays.qualificacao_logistica ? `${perStageDays.qualificacao_logistica}d` : "—"}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                          {perStageDays.cotacao_frete ? `${perStageDays.cotacao_frete}d` : "—"}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                          {perStageDays.proposta_enviada ? `${perStageDays.proposta_enviada}d` : "—"}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]">
-                          {perStageDays.negociacao ? `${perStageDays.negociacao}d` : "—"}
-                        </td>
+                        {ACTIVE_PIPELINE_STAGES.map((stage) => (
+                          <td
+                            key={stage.key}
+                            className="py-2.5 px-3 text-center font-mono text-[11px] text-[#57534E]"
+                          >
+                            {perStageDays[stage.key] ? `${perStageDays[stage.key]}d` : "—"}
+                          </td>
+                        ))}
                         <td className="py-2.5 px-3 text-right font-mono font-bold">
                           <span
                             className={`px-2 py-0.5 rounded ${

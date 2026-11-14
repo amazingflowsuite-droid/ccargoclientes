@@ -50,6 +50,7 @@ export interface Account {
   nome_fantasia?: string;
   status: AccountStatus;
   estagio?: LeadStage;
+  kanban_order?: number;
   
   // Contato
   contato_nome?: string;

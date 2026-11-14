@@ -3,6 +3,8 @@
 import React from "react";
 import { Account, LeadStage } from "@/types";
 import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
+import { normalizeLeadStage } from "@/lib/kanban-stages";
+import { DropPosition } from "@/lib/kanban-order";
 import {
   GripVertical,
   MapPin,
@@ -17,16 +19,19 @@ interface KanbanCardProps {
   lead: Account;
   stageKey: LeadStage;
   isDragging: boolean;
+  dropIndicator?: DropPosition | null;
   whatsAppUrl: string | null;
   onDragStart: (e: React.DragEvent, accountId: string) => void;
   onDragEnd: () => void;
+  onCardDragOver?: (e: React.DragEvent, stageKey: LeadStage, cardId: string) => void;
+  onCardDrop?: (e: React.DragEvent, stageKey: LeadStage, cardId: string) => void;
   onOpenDetails: (lead: Account) => void;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getDaysInCurrentStage(lead: Account): number {
-  const stage = lead.estagio || "prospeccao_inicial";
+  const stage = normalizeLeadStage(lead.estagio);
   const stageIso = lead.stage_history?.[stage] || lead.updated_at || lead.created_at;
   const startMs = new Date(stageIso).getTime();
   if (isNaN(startMs)) return 1;
@@ -35,10 +40,14 @@ function getDaysInCurrentStage(lead: Account): number {
 
 const KanbanCardComponent: React.FC<KanbanCardProps> = ({
   lead,
+  stageKey,
   isDragging,
+  dropIndicator,
   whatsAppUrl,
   onDragStart,
   onDragEnd,
+  onCardDragOver,
+  onCardDrop,
   onOpenDetails,
 }) => {
   const daysInStage = getDaysInCurrentStage(lead);
@@ -52,17 +61,28 @@ const KanbanCardComponent: React.FC<KanbanCardProps> = ({
 
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, lead.id)}
-      onDragEnd={onDragEnd}
-      onClick={() => onOpenDetails(lead)}
-      title={`Clique para abrir a ficha completa de ${displayName} (${formatCNPJ(lead.cnpj)}) ou arraste para mudar de etapa`}
-      className={`bg-white p-3 rounded-lg border shadow-subtle transition-all flex flex-col justify-between gap-2.5 group cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[#0D9488]/60 ${
-        isDragging
-          ? "opacity-40 border-dashed border-[#0D9488]"
-          : "border-[#E7E5E4]"
-      }`}
+      onDragOver={(e) => onCardDragOver?.(e, stageKey, lead.id)}
+      onDrop={(e) => onCardDrop?.(e, stageKey, lead.id)}
+      className="relative"
     >
+      {dropIndicator === "before" && (
+        <div
+          aria-hidden="true"
+          className="h-1 bg-[#0D9488] rounded-full mb-1.5 shadow-[0_0_0_2px_rgba(13,148,136,0.18)] transition-all"
+        />
+      )}
+      <div
+        draggable
+        onDragStart={(e) => onDragStart(e, lead.id)}
+        onDragEnd={onDragEnd}
+        onClick={() => onOpenDetails(lead)}
+        title={`Clique para abrir a ficha completa de ${displayName} (${formatCNPJ(lead.cnpj)}) ou arraste para reordenar / mudar de etapa`}
+        className={`bg-white p-3 rounded-lg border shadow-subtle transition-all flex flex-col justify-between gap-2.5 group cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[#0D9488]/60 ${
+          isDragging
+            ? "opacity-40 border-dashed border-[#0D9488]"
+            : "border-[#E7E5E4]"
+        }`}
+      >
       {/* 1. TOPO: NOME DA EMPRESA + TEMPO NA ETAPA (CYCLE TIME) */}
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-1.5">
@@ -164,6 +184,13 @@ const KanbanCardComponent: React.FC<KanbanCardProps> = ({
           )}
         </div>
       </div>
+      </div>
+      {dropIndicator === "after" && (
+        <div
+          aria-hidden="true"
+          className="h-1 bg-[#0D9488] rounded-full mt-1.5 shadow-[0_0_0_2px_rgba(13,148,136,0.18)] transition-all"
+        />
+      )}
     </div>
   );
 };

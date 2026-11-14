@@ -3,16 +3,7 @@ import Link from "next/link";
 import { CollisionCheckResult } from "@/types";
 import { ShieldAlert, AlertTriangle, Info, CheckCircle2, Building2, ExternalLink } from "lucide-react";
 import { formatCNPJ } from "@/lib/utils";
-
-const STAGE_LABELS: Record<string, string> = {
-  prospeccao_inicial: "1. Primeiro Contato",
-  qualificacao_logistica: "2. Perfil & Frota",
-  cotacao_frete: "3. Cotação de Frete",
-  proposta_enviada: "4. Proposta Enviada",
-  negociacao: "5. Negociação",
-  fechado_ganho: "6. Fechado / Ganho",
-  perdido: "Perdido",
-};
+import { getStageLabel } from "@/lib/kanban-stages";
 
 interface CollisionAlertProps {
   collision: CollisionCheckResult | null;
@@ -118,8 +109,7 @@ export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, check
         );
       }
 
-      const stageName =
-        STAGE_LABELS[exact_match.estagio || "prospeccao_inicial"] || exact_match.estagio;
+      const stageName = getStageLabel(exact_match.estagio);
 
       return (
         <div className="p-4 rounded-md border-2 border-amber-400 bg-amber-50 text-amber-950 shadow-sm animate-in fade-in duration-200">
