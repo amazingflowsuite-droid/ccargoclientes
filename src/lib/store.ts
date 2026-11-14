@@ -46,216 +46,6 @@ const INITIAL_USERS: AppUser[] = [
   },
 ];
 
-const INITIAL_ACCOUNTS: Account[] = [
-  {
-    id: "acc-tauste",
-    cnpj: "45464748000133",
-    cnpj_raiz: "45464748",
-    cnpj_formatado: "45.464.748/0001-33",
-    razao_social: "TAUSTE SUPERMERCADOS LTDA",
-    nome_fantasia: "Tauste Supermercados (CD Central)",
-    status: "lead",
-    estagio: "negociacao",
-    contato_nome: "Henrique Martins",
-    contato_cargo: "Gerente de Logística e Recebimento",
-    telefone: "(14) 99711-2233",
-    email: "logistica@tauste.com.br",
-    tipo_carga: "Lotação (FTL)",
-    rotas_principais: ["SP ⇄ Interior SP (Marília/Bauru/Sorocaba)", "PR ⇄ SP"],
-    tipos_veiculos: ["Carreta Sider", "Truck Baú", "Carreta Frigorífica / Refrigerada"],
-    volume_mensal_estimado: "25 viagens/mês",
-    sdr_responsavel_nome: "Ana Paula (Comercial)",
-    cidade: "Marília",
-    uf: "SP",
-    observacoes_importantes:
-      "Cliente exige carga 100% paletizada (padrão PBR). Não carrega carga batida no chão. Recebimento no CD apenas com agendamento de janela entre 07h e 13h. Solicita veículos com menos de 10 anos de uso e seguro atualizado.",
-    stage_history: {
-      prospeccao_inicial: new Date(Date.now() - 8 * DAY_MS).toISOString(),
-      qualificacao_logistica: new Date(Date.now() - 5 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 2 * DAY_MS).toISOString(),
-    },
-    created_at: new Date(Date.now() - 8 * DAY_MS).toISOString(),
-    updated_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-  },
-  {
-    id: "acc-1",
-    cnpj: "12345678000190",
-    cnpj_raiz: "12345678",
-    cnpj_formatado: "12.345.678/0001-90",
-    razao_social: "AMBEV DISTRIBUICAO S.A.",
-    nome_fantasia: "Ambev Centro de Distribuição",
-    status: "cliente_ativo",
-    estagio: "fechado_ganho",
-    gerente_conta_nome: "Roberto Silva (Executivo Key Accounts)",
-    sdr_responsavel_nome: "Ana Paula (Comercial)",
-    tipo_carga: "Lotação (FTL)",
-    rotas_principais: ["SP-PR", "SP-RJ", "MG-SP"],
-    tipos_veiculos: ["Carreta LS", "Bitrem"],
-    volume_mensal_estimado: "45 carretas/mês",
-    cidade: "São Paulo",
-    uf: "SP",
-    observacoes_importantes:
-      "Cliente estratégico da carteira ativa. Exige rastreamento dedicado e checklist de segurança antes do embarque.",
-    stage_history: {
-      prospeccao_inicial: new Date(Date.now() - 60 * DAY_MS).toISOString(),
-      qualificacao_logistica: new Date(Date.now() - 56 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 52 * DAY_MS).toISOString(),
-      proposta_enviada: new Date(Date.now() - 48 * DAY_MS).toISOString(),
-      fechado_ganho: new Date(Date.now() - 41 * DAY_MS).toISOString(),
-    },
-    fechado_em: new Date(Date.now() - 41 * DAY_MS).toISOString(),
-    created_at: new Date(Date.now() - 60 * DAY_MS).toISOString(),
-    updated_at: new Date(Date.now() - 41 * DAY_MS).toISOString(),
-  },
-  {
-    id: "acc-2",
-    cnpj: "98765432000111",
-    cnpj_raiz: "98765432",
-    cnpj_formatado: "98.765.432/0001-11",
-    razao_social: "COMERCIAL DE ALIMENTOS BARATO LTDA",
-    nome_fantasia: "Supermercados Barateiro",
-    status: "desqualificado",
-    estagio: "perdido",
-    motivo_desqualificacao: "baixa_rentabilidade",
-    detalhe_desqualificacao:
-      "Cliente exigiu frete a R$ 3,10/km sem retorno garantido na rota interior de SP para GO. Operação altamente deficitária.",
-    data_desqualificacao: new Date(Date.now() - 15 * DAY_MS).toISOString(),
-    tipo_carga: "Fracionada (LTL)",
-    rotas_principais: ["SP-GO"],
-    tipos_veiculos: ["Truck Baú"],
-    sdr_responsavel_nome: "Ana Paula (Comercial)",
-    cidade: "Campinas",
-    uf: "SP",
-    observacoes_importantes:
-      "Não aceita repasse de pedágio na tabela e costuma reter caminhão por mais de 8h na descarga sem pagamento de estadia.",
-    stage_history: {
-      prospeccao_inicial: new Date(Date.now() - 20 * DAY_MS).toISOString(),
-      qualificacao_logistica: new Date(Date.now() - 18 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 16 * DAY_MS).toISOString(),
-      perdido: new Date(Date.now() - 15 * DAY_MS).toISOString(),
-    },
-    created_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
-    updated_at: new Date(Date.now() - 15 * DAY_MS).toISOString(),
-  },
-  {
-    id: "acc-3",
-    cnpj: "55443322000100",
-    cnpj_raiz: "55443322",
-    cnpj_formatado: "55.443.322/0001-00",
-    razao_social: "METALURGICA DO SUL INDUSTRIA E COMERCIO S.A.",
-    nome_fantasia: "Metalúrgica do Sul",
-    status: "lead",
-    estagio: "proposta_enviada",
-    contato_nome: "Mariana Santos",
-    contato_cargo: "Coordenadora de Logística",
-    telefone: "(11) 98765-4321",
-    email: "mariana.log@metalurgicasul.com.br",
-    tipo_carga: "Lotação (FTL)",
-    rotas_principais: ["RS-SP", "PR-SP"],
-    tipos_veiculos: ["Carreta Grade Baixa", "Carreta Sider"],
-    volume_mensal_estimado: "12 carretas/mês",
-    sdr_responsavel_nome: "Ana Paula (Comercial)",
-    cidade: "Caxias do Sul",
-    uf: "RS",
-    observacoes_importantes:
-      "Carrega chapas e perfis metálicos. Exige no mínimo 12 cintas catracadas e cantoneiras de proteção. Não carrega veículo com assoalho de madeira danificado.",
-    stage_history: {
-      prospeccao_inicial: new Date(Date.now() - 9 * DAY_MS).toISOString(),
-      qualificacao_logistica: new Date(Date.now() - 7 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 4 * DAY_MS).toISOString(),
-      proposta_enviada: new Date(Date.now() - 2 * DAY_MS).toISOString(),
-    },
-    created_at: new Date(Date.now() - 9 * DAY_MS).toISOString(),
-    updated_at: new Date(Date.now() - 2 * DAY_MS).toISOString(),
-  },
-  {
-    id: "acc-4",
-    cnpj: "33221100000188",
-    cnpj_raiz: "33221100",
-    cnpj_formatado: "33.221.100/0001-88",
-    razao_social: "AGROGRAOS DO CERRADO EXPORTACAO LTDA",
-    nome_fantasia: "AgroGrãos Cerrado",
-    status: "lead",
-    estagio: "fechado_ganho",
-    contato_nome: "Fernando Costa",
-    contato_cargo: "Gerente de Suprimentos",
-    telefone: "(62) 99876-1234",
-    email: "fernando@agrograos.com.br",
-    tipo_carga: "Lotação (FTL)",
-    rotas_principais: ["GO-SP (Porto de Santos)"],
-    tipos_veiculos: ["Carreta Rodotrem / Bitrem", "Carreta LS (3 Eixos)"],
-    volume_mensal_estimado: "60 viagens/safra",
-    sdr_responsavel_nome: "Ana Paula (Comercial)",
-    cidade: "Rio Verde",
-    uf: "GO",
-    observacoes_importantes:
-      "Fechou pacote inicial de 15 viagens mensais para dezembro. Exige lona impermeável nova e motorista com cadastro ativo em gerenciadora de risco.",
-    stage_history: {
-      prospeccao_inicial: new Date(Date.now() - 14 * DAY_MS).toISOString(),
-      qualificacao_logistica: new Date(Date.now() - 11 * DAY_MS).toISOString(),
-      negociacao: new Date(Date.now() - 8 * DAY_MS).toISOString(),
-      proposta_enviada: new Date(Date.now() - 4 * DAY_MS).toISOString(),
-      fechado_ganho: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-    },
-    fechado_em: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-    created_at: new Date(Date.now() - 14 * DAY_MS).toISOString(),
-    updated_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-  },
-];
-
-const INITIAL_LOGS: ContactLog[] = [
-  {
-    id: "log-t1",
-    account_id: "acc-tauste",
-    tipo_contato: "telefone",
-    resultado: "sem_resposta",
-    resumo:
-      "Liguei no ramal da logística às 09h40. Tocou até cair na caixa postal. Recepcionista informou que o Henrique estava em reunião de pátio.",
-    usuario_nome: "Ana Paula (Comercial)",
-    created_at: new Date(Date.now() - 6 * DAY_MS).toISOString(),
-  },
-  {
-    id: "log-t2",
-    account_id: "acc-tauste",
-    tipo_contato: "telefone",
-    resultado: "reagendado",
-    resumo:
-      "Novo contato às 14h30. Falei brevemente com a assistente Camila, que pediu para ligar na quinta-feira pela manhã diretamente para o Henrique Martins.",
-    usuario_nome: "Ana Paula (Comercial)",
-    created_at: new Date(Date.now() - 4 * DAY_MS).toISOString(),
-  },
-  {
-    id: "log-t3",
-    account_id: "acc-tauste",
-    tipo_contato: "whatsapp",
-    resultado: "sucesso",
-    resumo:
-      "Consegui falar com Henrique Martins! Explicou que precisam de Carreta Sider e Frigorífica para abastecimento entre CD Marília, Bauru e Sorocaba. Avisou que NÃO carregam carga batida (somente paletizada PBR) e pediu cotação formal por faixa de km.",
-    usuario_nome: "Ana Paula (Comercial)",
-    created_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-  },
-  {
-    id: "log-m1",
-    account_id: "acc-3",
-    tipo_contato: "telefone",
-    resultado: "sucesso",
-    resumo:
-      "Falei com Mariana Santos (Coordenadora). Enviou planilha com volumes da rota Caxias do Sul (RS) -> Guarulhos (SP). Proposta comercial enviada por e-mail.",
-    usuario_nome: "Ana Paula (Comercial)",
-    created_at: new Date(Date.now() - 2 * DAY_MS).toISOString(),
-  },
-  {
-    id: "log-a1",
-    account_id: "acc-4",
-    tipo_contato: "reuniao",
-    resultado: "sucesso",
-    resumo:
-      "Reunião de fechamento de tabela GO -> Santos. Fernando aprovou os valores de frete para início imediato da operação.",
-    usuario_nome: "Ana Paula (Comercial)",
-    created_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
-  },
-];
-
 // ============================================================================
 // OVERLAY DE SEGURANÇA DE USUÁRIOS (SENHAS E TOKENS DE DEFINIÇÃO / RESET)
 // ============================================================================
@@ -990,22 +780,13 @@ function buildSynthesizedStageHistory(acc: Account): Partial<Record<LeadStage, s
 // ============================================================================
 
 function getLocalAccounts(): Account[] {
-  if (typeof window === "undefined") return INITIAL_ACCOUNTS;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(INITIAL_ACCOUNTS));
-      return INITIAL_ACCOUNTS;
-    }
-    const parsed: Account[] = JSON.parse(raw);
-    if (!parsed.some((a) => cleanCNPJ(a.cnpj) === "45464748000133")) {
-      const withTauste = [INITIAL_ACCOUNTS[0], ...parsed];
-      localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(withTauste));
-      return withTauste;
-    }
-    return parsed;
+    if (!raw) return [];
+    return JSON.parse(raw) as Account[];
   } catch {
-    return INITIAL_ACCOUNTS;
+    return [];
   }
 }
 
@@ -1025,12 +806,10 @@ function mergeWithOverlay(accounts: Account[]): Account[] {
 
   return accounts.map((acc) => {
     const clean = cleanCNPJ(acc.cnpj);
-    const seedMatch = INITIAL_ACCOUNTS.find((s) => cleanCNPJ(s.cnpj) === clean);
     const overlayNote = overlay[acc.id] ?? overlay[clean];
     const overlayOrder = orderOverlay[acc.id] ?? orderOverlay[clean];
     const customStages = stageOverlay[acc.id] || stageOverlay[clean] || {};
-    const baseStages =
-      acc.stage_history || seedMatch?.stage_history || buildSynthesizedStageHistory(acc);
+    const baseStages = acc.stage_history || buildSynthesizedStageHistory(acc);
 
     const mergedHistory = {
       ...baseStages,
@@ -1048,17 +827,10 @@ function mergeWithOverlay(accounts: Account[]): Account[] {
           ? acc.kanban_order
           : overlayOrder,
       observacoes_importantes:
-        overlayNote !== undefined
-          ? overlayNote
-          : acc.observacoes_importantes || seedMatch?.observacoes_importantes || undefined,
-      sdr_responsavel_nome:
-        acc.sdr_responsavel_nome || seedMatch?.sdr_responsavel_nome || "Ana Paula (Comercial)",
+        overlayNote !== undefined ? overlayNote : acc.observacoes_importantes || undefined,
+      sdr_responsavel_nome: acc.sdr_responsavel_nome || "Ana Paula (Comercial)",
       stage_history: mergedHistory,
-      fechado_em:
-        acc.fechado_em ||
-        seedMatch?.fechado_em ||
-        customStages.fechado_ganho ||
-        baseStages.fechado_ganho,
+      fechado_em: acc.fechado_em || customStages.fechado_ganho || baseStages.fechado_ganho,
     };
   });
 }
@@ -1071,11 +843,8 @@ export async function fetchAllAccounts(): Promise<Account[]> {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const remoteAccounts = data as Account[];
-        const hasTauste = remoteAccounts.some((a) => cleanCNPJ(a.cnpj) === "45464748000133");
-        const combined = hasTauste ? remoteAccounts : [INITIAL_ACCOUNTS[0], ...remoteAccounts];
-        return mergeWithOverlay(combined);
+      if (!error && data) {
+        return mergeWithOverlay(data as Account[]);
       }
     } catch (err) {
       console.warn("Falha ao consultar Supabase, usando armazenamento local:", err);
@@ -1294,22 +1063,17 @@ export async function deleteAccount(id: string): Promise<boolean> {
 // ============================================================================
 
 function getLocalLogs(): ContactLog[] {
-  if (typeof window === "undefined") return INITIAL_LOGS;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LOGS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(INITIAL_LOGS));
-      return INITIAL_LOGS;
-    }
-    return JSON.parse(raw);
+    if (!raw) return [];
+    return JSON.parse(raw) as ContactLog[];
   } catch {
-    return INITIAL_LOGS;
+    return [];
   }
 }
 
 export async function fetchAllContactLogs(): Promise<ContactLog[]> {
-  const localLogs = getLocalLogs();
-
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
@@ -1317,21 +1081,17 @@ export async function fetchAllContactLogs(): Promise<ContactLog[]> {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const remoteLogs = data as ContactLog[];
-        const remoteIds = new Set(remoteLogs.map((l) => l.id));
-        const merged = [
-          ...remoteLogs,
-          ...localLogs.filter((l) => !remoteIds.has(l.id)),
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        return merged;
+      if (!error && data) {
+        return (data as ContactLog[]).sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
       }
     } catch (err) {
       console.warn("Erro ao buscar todos os logs no Supabase:", err);
     }
   }
 
-  return localLogs.sort(
+  return getLocalLogs().sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 }

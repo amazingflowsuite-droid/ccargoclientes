@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { cleanCNPJ, formatCNPJ, getCNPJRaiz, formatPhone } from "../src/lib/utils";
 import { checkCNPJCollision, createAccount } from "../src/lib/store";
 
@@ -29,6 +29,54 @@ describe("CNPJ e Utilitários de Entrada (Utils)", () => {
 });
 
 describe("Regra Anti-Colisão de CNPJ (checkCNPJCollision)", () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+
+  beforeAll(async () => {
+    const storageMap = new Map<string, string>();
+    const mockStorage = {
+      getItem: (key: string) => storageMap.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storageMap.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storageMap.delete(key);
+      },
+      clear: () => storageMap.clear(),
+    };
+    (globalThis as { window?: unknown }).window = globalThis;
+    (globalThis as { localStorage?: unknown }).localStorage = mockStorage;
+
+    await createAccount({
+      cnpj: "12345678000190",
+      cnpj_formatado: "12.345.678/0001-90",
+      razao_social: "AMBEV DISTRIBUICAO S.A.",
+      status: "cliente_ativo",
+      estagio: "fechado_ganho",
+      tipo_carga: "Lotação (FTL)",
+      rotas_principais: ["SP-PR"],
+      tipos_veiculos: ["Carreta LS"],
+      sdr_responsavel_nome: "Ana Paula (Comercial)",
+    });
+
+    await createAccount({
+      cnpj: "55443322000100",
+      cnpj_formatado: "55.443.322/0001-00",
+      razao_social: "METALURGICA DO SUL INDUSTRIA E COMERCIO S.A.",
+      status: "lead",
+      estagio: "proposta_enviada",
+      tipo_carga: "Lotação (FTL)",
+      rotas_principais: ["RS-SP"],
+      tipos_veiculos: ["Carreta Sider"],
+      sdr_responsavel_nome: "Ana Paula (Comercial)",
+    });
+  });
+
+  afterAll(() => {
+    (globalThis as { window?: unknown }).window = originalWindow;
+    (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
+  });
+
   it("deve identificar colisão exata de CNPJ de cliente ativo já cadastrado", async () => {
     // 12345678000190 = Ambev (Cliente Ativo nos dados iniciais)
     const res = await checkCNPJCollision("12.345.678/0001-90");
