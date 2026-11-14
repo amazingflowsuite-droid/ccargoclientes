@@ -12,6 +12,39 @@ import { cleanCNPJ, formatCNPJ, getCNPJRaiz } from "./utils";
 import { ORDERED_STAGE_KEYS, normalizeLeadStage } from "./kanban-stages";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
+function shouldUseServerApi(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof fetch === "function" &&
+    isSupabaseConfigured &&
+    !(typeof process !== "undefined" && process.env?.VITEST)
+  );
+}
+
+async function apiRequest<T>(
+  url: string,
+  options?: RequestInit
+): Promise<{ ok: boolean; status: number; data: T }> {
+  const res = await fetch(url, {
+    ...options,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers || {}),
+    },
+  });
+
+  if (res.status === 401 && !url.startsWith("/api/auth/")) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
+      window.dispatchEvent(new Event("ccargo-auth-changed"));
+    }
+  }
+
+  const data = (await res.json().catch(() => ({}))) as T;
+  return { ok: res.ok, status: res.status, data };
+}
+
 const STORAGE_KEY_ACCOUNTS = "ccargo_accounts_v2";
 const STORAGE_KEY_LOGS = "ccargo_contact_logs_v2";
 const STORAGE_KEY_NOTES_OVERLAY = "ccargo_notes_overlay_v1";
@@ -152,6 +185,16 @@ function applyUserSecurityOverlay(users: AppUser[]): AppUser[] {
 }
 
 export async function fetchAllAppUsers(): Promise<AppUser[]> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ data?: AppUser[]; error?: string }>("/api/users");
+    if (res.ok && res.data.data) {
+      const merged = applyUserSecurityOverlay(res.data.data);
+      saveLocalUsers(merged);
+      return merged;
+    }
+    return [];
+  }
+
   const localUsers = getLocalUsers();
 
   if (isSupabaseConfigured && supabase) {
@@ -199,6 +242,22 @@ export async function loginWithEmailAndPassword(
 
   if (!cleanEmail || !cleanPass) {
     return { success: false, error: "Informe o e-mail e a senha." };
+  }
+
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ success?: boolean; user?: AppUser; error?: string }>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: cleanEmail, senha: cleanPass }),
+      }
+    );
+    if (!res.ok || !res.data.success || !res.data.user) {
+      return { success: false, error: res.data.error || "E-mail ou senha inválidos." };
+    }
+    localStorage.setItem(STORAGE_KEY_AUTH_SESSION, JSON.stringify(res.data.user));
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+    return { success: true, user: res.data.user };
   }
 
   const users = await fetchAllAppUsers();
@@ -251,6 +310,9 @@ export async function loginWithEmailAndPassword(
 
 export function logoutUser(): void {
   if (typeof window === "undefined") return;
+  if (shouldUseServerApi()) {
+    void fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+  }
   localStorage.removeItem(STORAGE_KEY_AUTH_SESSION);
   window.dispatchEvent(new Event("ccargo-auth-changed"));
 }
@@ -275,6 +337,19 @@ export async function createAppUser(params: {
 
   if (!cleanNome || !cleanEmail) {
     return { success: false, error: "Preencha o nome completo e o e-mail corporativo." };
+  }
+
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ user?: AppUser; token?: string; error?: string }>("/api/users", {
+      method: "POST",
+      body: JSON.stringify({ nome: cleanNome, email: cleanEmail, perfil: params.perfil }),
+    });
+    if (!res.ok || !res.data.user || !res.data.token) {
+      return { success: false, error: res.data.error || "Erro ao criar usuário." };
+    }
+    const resetUrl = buildPasswordResetUrl(res.data.token, cleanEmail);
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+    return { success: true, user: res.data.user, resetToken: res.data.token, resetUrl };
   }
 
   const existingUsers = await fetchAllAppUsers();
@@ -386,6 +461,23 @@ export async function requestPasswordReset(userId: string): Promise<{
   resetUrl?: string;
   error?: string;
 }> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ user?: AppUser; token?: string; error?: string }>("/api/users", {
+      method: "PATCH",
+      body: JSON.stringify({ id: userId, action: "request_reset" }),
+    });
+    if (!res.ok || !res.data.user || !res.data.token) {
+      return { success: false, error: res.data.error || "Erro ao solicitar redefinição." };
+    }
+    const resetUrl = buildPasswordResetUrl(res.data.token, res.data.user.email);
+    return {
+      success: true,
+      user: res.data.user,
+      resetToken: res.data.token,
+      resetUrl,
+    };
+  }
+
   const users = await fetchAllAppUsers();
   const target = users.find((u) => u.id === userId);
   if (!target) {
@@ -460,6 +552,19 @@ export async function validatePasswordResetToken(
     return { valid: false, error: "Link de definição de senha inválido ou incompleto." };
   }
 
+  if (shouldUseServerApi()) {
+    const params = new URLSearchParams({ token: cleanToken });
+    if (emailHint) params.set("email", emailHint.trim().toLowerCase());
+    const res = await apiRequest<{ valid?: boolean; user?: AppUser; error?: string }>(
+      `/api/auth/password-reset?${params.toString()}`
+    );
+    return {
+      valid: Boolean(res.ok && res.data.valid),
+      user: res.data.user,
+      error: res.data.error,
+    };
+  }
+
   const users = await fetchAllAppUsers();
   // Blindagem de Segurança (SEC-05): O token real é OBRIGATÓRIO para validação
   const matched = users.find(
@@ -513,6 +618,26 @@ export async function completePasswordDefinition(params: {
       success: false,
       error: "A senha deve conter no mínimo 8 caracteres para sua segurança.",
     };
+  }
+
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ success?: boolean; user?: AppUser; error?: string }>(
+      "/api/auth/password-reset",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          token: params.token,
+          email: params.emailHint,
+          novaSenha: cleanPass,
+        }),
+      }
+    );
+    if (!res.ok || !res.data.success || !res.data.user) {
+      return { success: false, error: res.data.error || "Erro ao definir senha." };
+    }
+    localStorage.setItem(STORAGE_KEY_AUTH_SESSION, JSON.stringify(res.data.user));
+    window.dispatchEvent(new Event("ccargo-auth-changed"));
+    return { success: true, user: res.data.user };
   }
 
   const validation = await validatePasswordResetToken(params.token, params.emailHint);
@@ -585,6 +710,18 @@ export async function completePasswordDefinition(params: {
 }
 
 export async function toggleAppUserActive(id: string, ativo: boolean): Promise<boolean> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ success?: boolean }>("/api/users", {
+      method: "PATCH",
+      body: JSON.stringify({ id, action: "toggle_active", ativo }),
+    });
+    if (res.ok) {
+      window.dispatchEvent(new Event("ccargo-auth-changed"));
+      return true;
+    }
+    return false;
+  }
+
   if (isSupabaseConfigured && supabase && !id.startsWith("usr-")) {
     try {
       await supabase.from("app_users").update({ ativo }).eq("id", id);
@@ -609,6 +746,22 @@ export async function deleteAppUser(id: string): Promise<{
   logsCount?: number;
   error?: string;
 }> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ success?: boolean; error?: string }>(
+      `/api/users?id=${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    );
+    if (res.ok) {
+      window.dispatchEvent(new Event("ccargo-auth-changed"));
+      return { success: true };
+    }
+    return {
+      success: false,
+      blockedByHistory: res.status === 409,
+      error: res.data.error || "Erro ao excluir usuário.",
+    };
+  }
+
   const users = await fetchAllAppUsers();
   const target = users.find((u) => u.id === id);
   if (!target) {
@@ -836,6 +989,14 @@ function mergeWithOverlay(accounts: Account[]): Account[] {
 }
 
 export async function fetchAllAccounts(): Promise<Account[]> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ data?: Account[]; error?: string }>("/api/accounts");
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao carregar contas do servidor.");
+    }
+    return mergeWithOverlay(res.data.data || []);
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
@@ -861,6 +1022,21 @@ export async function fetchAccountById(id: string): Promise<Account | null> {
 export async function checkCNPJCollision(rawCnpj: string): Promise<CollisionCheckResult> {
   const clean = cleanCNPJ(rawCnpj);
   const raiz = getCNPJRaiz(clean);
+
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<CollisionCheckResult & { error?: string }>(
+      `/api/accounts/check-cnpj?cnpj=${encodeURIComponent(clean)}`
+    );
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao verificar CNPJ no servidor.");
+    }
+    return {
+      has_exact_collision: Boolean(res.data.has_exact_collision),
+      exact_match: res.data.exact_match || null,
+      has_related_collision: Boolean(res.data.has_related_collision),
+      related_accounts: res.data.related_accounts || [],
+    };
+  }
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -931,6 +1107,22 @@ export async function createAccount(
   }
   recordStageTransition(clean, clean, initialStage);
 
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ data?: Account; error?: string }>("/api/accounts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data.data) {
+      throw new Error(res.data.error || "Erro ao salvar oportunidade no servidor.");
+    }
+    const created = res.data.data;
+    if (accountData.observacoes_importantes) {
+      saveNoteOverlay(created.id, clean, accountData.observacoes_importantes);
+    }
+    recordStageTransition(created.id, clean, initialStage);
+    return mergeWithOverlay([created])[0];
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { stage_history, fechado_em, ...dbPayload } = payload;
@@ -995,6 +1187,18 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
     recordStageTransition(id, updates.cnpj || "", updates.estagio);
   }
 
+  if (shouldUseServerApi() && !id.startsWith("acc-")) {
+    const { stage_history: _sh, fechado_em: _fe, ...dbUpdates } = updates;
+    const res = await apiRequest<{ data?: Account | null; error?: string }>("/api/accounts", {
+      method: "PATCH",
+      body: JSON.stringify({ id, updates: dbUpdates }),
+    });
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao atualizar conta no servidor.");
+    }
+    return res.data.data ? mergeWithOverlay([res.data.data])[0] : null;
+  }
+
   if (isSupabaseConfigured && supabase && !id.startsWith("acc-")) {
     try {
       const { stage_history, fechado_em, ...dbUpdates } = updates;
@@ -1046,6 +1250,17 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
 }
 
 export async function deleteAccount(id: string): Promise<boolean> {
+  if (shouldUseServerApi() && !id.startsWith("acc-")) {
+    const res = await apiRequest<{ success?: boolean; error?: string }>(
+      `/api/accounts?id=${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao remover conta no servidor.");
+    }
+    return true;
+  }
+
   if (isSupabaseConfigured && supabase && !id.startsWith("acc-")) {
     try {
       await supabase.from("accounts").delete().eq("id", id);
@@ -1074,6 +1289,16 @@ function getLocalLogs(): ContactLog[] {
 }
 
 export async function fetchAllContactLogs(): Promise<ContactLog[]> {
+  if (shouldUseServerApi()) {
+    const res = await apiRequest<{ data?: ContactLog[]; error?: string }>("/api/contact-logs");
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao carregar histórico de contatos.");
+    }
+    return (res.data.data || []).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
@@ -1108,6 +1333,17 @@ export async function addContactLog(
     ...logData,
     usuario_nome: logData.usuario_nome || getCurrentOperator(),
   };
+
+  if (shouldUseServerApi() && !logData.account_id.startsWith("acc-")) {
+    const res = await apiRequest<{ data?: ContactLog; error?: string }>("/api/contact-logs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.data.data) {
+      throw new Error(res.data.error || "Erro ao registrar contato no servidor.");
+    }
+    return res.data.data;
+  }
 
   if (isSupabaseConfigured && supabase && !logData.account_id.startsWith("acc-")) {
     try {

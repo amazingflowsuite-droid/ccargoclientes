@@ -63,17 +63,11 @@ CREATE INDEX IF NOT EXISTS idx_app_users_perfil ON app_users(perfil);
 
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 
+-- RLS fechado: acesso permitido apenas via backend (SUPABASE_SERVICE_ROLE_KEY)
 DROP POLICY IF EXISTS "Permitir leitura publica app_users" ON app_users;
-CREATE POLICY "Permitir leitura publica app_users" ON app_users FOR SELECT USING (true);
-
 DROP POLICY IF EXISTS "Permitir insercao publica app_users" ON app_users;
-CREATE POLICY "Permitir insercao publica app_users" ON app_users FOR INSERT WITH CHECK (true);
-
 DROP POLICY IF EXISTS "Permitir atualizacao publica app_users" ON app_users;
-CREATE POLICY "Permitir atualizacao publica app_users" ON app_users FOR UPDATE USING (true);
-
 DROP POLICY IF EXISTS "Permitir exclusao publica app_users" ON app_users;
-CREATE POLICY "Permitir exclusao publica app_users" ON app_users FOR DELETE USING (true);
 
 -- Seed de Usuários Iniciais (Gestor e Operadora Comercial)
 INSERT INTO app_users (nome, email, perfil, senha, ativo)
@@ -162,34 +156,21 @@ CREATE INDEX IF NOT EXISTS idx_contact_logs_account ON contact_logs(account_id);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_created_at ON contact_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_usuario ON contact_logs(usuario_nome);
 
--- 5. POLÍTICAS DE ROW LEVEL SECURITY (RLS) PARA ACESSO WEB
+-- 5. POLÍTICAS DE ROW LEVEL SECURITY (RLS) — FECHADO PARA ACESSO DIRETO VIA ANON KEY
+-- Toda leitura e gravação deve passar pelas rotas de API do Next.js (/api/*) usando SUPABASE_SERVICE_ROLE_KEY.
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir leitura publica accounts" ON accounts;
-CREATE POLICY "Permitir leitura publica accounts" ON accounts FOR SELECT USING (true);
-
 DROP POLICY IF EXISTS "Permitir insercao publica accounts" ON accounts;
-CREATE POLICY "Permitir insercao publica accounts" ON accounts FOR INSERT WITH CHECK (true);
-
 DROP POLICY IF EXISTS "Permitir atualizacao publica accounts" ON accounts;
-CREATE POLICY "Permitir atualizacao publica accounts" ON accounts FOR UPDATE USING (true);
-
 DROP POLICY IF EXISTS "Permitir exclusao publica accounts" ON accounts;
-CREATE POLICY "Permitir exclusao publica accounts" ON accounts FOR DELETE USING (true);
 
 ALTER TABLE contact_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir leitura publica contact_logs" ON contact_logs;
-CREATE POLICY "Permitir leitura publica contact_logs" ON contact_logs FOR SELECT USING (true);
-
 DROP POLICY IF EXISTS "Permitir insercao publica contact_logs" ON contact_logs;
-CREATE POLICY "Permitir insercao publica contact_logs" ON contact_logs FOR INSERT WITH CHECK (true);
-
 DROP POLICY IF EXISTS "Permitir atualizacao publica contact_logs" ON contact_logs;
-CREATE POLICY "Permitir atualizacao publica contact_logs" ON contact_logs FOR UPDATE USING (true);
-
 DROP POLICY IF EXISTS "Permitir exclusao publica contact_logs" ON contact_logs;
-CREATE POLICY "Permitir exclusao publica contact_logs" ON contact_logs FOR DELETE USING (true);
 
 -- 6. FUNÇÃO RPC PARA VERIFICAÇÃO HÍBRIDA DE CNPJ (US-01 e US-02)
 CREATE OR REPLACE FUNCTION check_cnpj_collision(p_cnpj VARCHAR(14))
