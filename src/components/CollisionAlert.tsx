@@ -43,7 +43,7 @@ export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, check
                 <div><strong>CNPJ:</strong> {formatCNPJ(exact_match.cnpj)}</div>
                 <div><strong>Executivo de Contas Responsável:</strong> {exact_match.gerente_conta_nome || "Diretoria Comercial"}</div>
                 {exact_match.volume_mensal_estimado && (
-                  <div><strong>Volume Atual:</strong> {exact_match.volume_mensal_estimado}</div>
+                  <div><strong>Volumetria:</strong> {exact_match.volume_mensal_estimado}</div>
                 )}
               </div>
             </div>

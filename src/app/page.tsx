@@ -545,11 +545,10 @@ export default function DashboardKanbanPage() {
               onDragOver={(e) => handleDragOver(e, stage.key)}
               onDragLeave={() => handleDragLeave(stage.key)}
               onDrop={(e) => handleDrop(e, stage.key)}
-              className={`rounded-lg border transition-all flex flex-col min-h-[540px] max-h-[calc(100vh-210px)] ${
-                isOver
-                  ? "bg-[#F0FDFA] border-[#0D9488] ring-2 ring-[#0D9488]/20"
-                  : "bg-[#F5F5F4]/90 border-[#E7E5E4]"
-              }`}
+              className={`rounded-lg border transition-all flex flex-col min-h-[540px] max-h-[calc(100vh-210px)] ${isOver
+                ? "bg-[#F0FDFA] border-[#0D9488] ring-2 ring-[#0D9488]/20"
+                : "bg-[#F5F5F4]/90 border-[#E7E5E4]"
+                }`}
             >
               {/* Cabeçalho da Coluna */}
               <div
@@ -573,11 +572,10 @@ export default function DashboardKanbanPage() {
                   </div>
                 ) : stageLeads.length === 0 ? (
                   <div
-                    className={`p-5 text-center text-[11px] rounded-md border border-dashed transition-colors ${
-                      isOver
-                        ? "border-[#0D9488] text-[#0D9488] bg-white font-semibold"
-                        : "border-[#D6D3D1] text-[#A8A29E] italic"
-                    }`}
+                    className={`p-5 text-center text-[11px] rounded-md border border-dashed transition-colors ${isOver
+                      ? "border-[#0D9488] text-[#0D9488] bg-white font-semibold"
+                      : "border-[#D6D3D1] text-[#A8A29E] italic"
+                      }`}
                   >
                     {isOver ? "Solte o card aqui" : "Nenhum lead nesta etapa"}
                   </div>

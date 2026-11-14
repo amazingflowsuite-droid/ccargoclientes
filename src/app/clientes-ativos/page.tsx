@@ -160,7 +160,7 @@ export default function ClientesAtivosPage() {
                 <th className="py-3 px-4">CNPJ</th>
                 <th className="py-3 px-4">Status & Proteção</th>
                 <th className="py-3 px-4">Executivo / Gerente de Conta</th>
-                <th className="py-3 px-4">Volume Operado</th>
+                <th className="py-3 px-4">Volumetria</th>
                 <th className="py-3 px-4 text-right">Ação</th>
               </tr>
             </thead>
@@ -290,7 +290,7 @@ export default function ClientesAtivosPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#57534E] mb-1">
-                  Volume Médio Operado (Opcional)
+                  Volumetria (Opcional)
                 </label>
                 <input
                   type="text"

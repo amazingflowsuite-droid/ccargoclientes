@@ -22,19 +22,27 @@ import {
   AlertCircle,
   FileText,
   UserCheck,
+  Plus,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
-const VEICULOS_DISPONIVEIS = [
+const PORTES_VEICULOS = [
   "VUC / 3/4",
   "Toco",
   "Truck",
   "Bitruck (4 Eixos)",
   "Carreta LS (3 Eixos)",
-  "Carreta Rodotrem / Bitrem",
-  "Carreta Sider",
-  "Carreta Grade Baixa",
-  "Carreta Frigorífica / Refrigerada",
+  "Bitrem / Rodotrem",
+];
+
+const TIPOS_CARROCERIAS = [
+  "Baú",
+  "Sider",
+  "Grade Baixa",
+  "Frigorífica / Refrigerada",
+  "Graneleira / Basculante",
+  "Porta-Container",
 ];
 
 const ROTAS_COMUNS = [
@@ -68,7 +76,9 @@ export default function NovoLeadPage() {
   // Transporte & Logística
   const [tipoCarga, setTipoCarga] = useState("Lotação (FTL)");
   const [rotasSelecionadas, setRotasSelecionadas] = useState<string[]>([]);
+  const [novaRotaInput, setNovaRotaInput] = useState("");
   const [veiculosSelecionados, setVeiculosSelecionados] = useState<string[]>([]);
+  const [novoVeiculoInput, setNovoVeiculoInput] = useState("");
   const [volumeMensal, setVolumeMensal] = useState("");
 
   // Observações Importantes e Operadora (US-09 e US-10)
@@ -156,6 +166,17 @@ export default function NovoLeadPage() {
     setVeiculosSelecionados((prev) =>
       prev.includes(veiculo) ? prev.filter((v) => v !== veiculo) : [...prev, veiculo]
     );
+  }
+
+  function addCustomSelection(
+    rawValue: string,
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+    resetInput: () => void
+  ) {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    setter((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    resetInput();
   }
 
   // Bloqueio Rígido se for cliente ativo (US-01) ou lead em andamento no pipeline (US-11)
@@ -445,40 +466,170 @@ export default function NovoLeadPage() {
                     </button>
                   );
                 })}
+                {rotasSelecionadas
+                  .filter((rota) => !ROTAS_COMUNS.includes(rota))
+                  .map((rotaCustom) => (
+                    <button
+                      key={rotaCustom}
+                      type="button"
+                      onClick={() => toggleRota(rotaCustom)}
+                      title="Clique para remover"
+                      className="px-3 py-1.5 rounded-full text-xs font-medium border bg-[#0D9488] text-white border-[#0D9488] flex items-center gap-1.5 transition-all hover:bg-[#0F766E]"
+                    >
+                      <Check className="w-3 h-3" />
+                      {rotaCustom}
+                      <X className="w-3 h-3 opacity-80" />
+                    </button>
+                  ))}
+              </div>
+              <div className="mt-2.5 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Outra rota (ex: MT ⇄ Porto de Paranaguá, SP ⇄ BA)"
+                  value={novaRotaInput}
+                  onChange={(e) => setNovaRotaInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomSelection(novaRotaInput, setRotasSelecionadas, () =>
+                        setNovaRotaInput("")
+                      );
+                    }
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded-md border border-[#D6D3D1] bg-white text-xs focus-ring"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    addCustomSelection(novaRotaInput, setRotasSelecionadas, () =>
+                      setNovaRotaInput("")
+                    )
+                  }
+                  disabled={!novaRotaInput.trim()}
+                  className="px-3 py-1.5 rounded-md border border-[#D6D3D1] bg-[#FAFAF9] hover:bg-[#F5F5F4] text-xs font-semibold text-[#1C1917] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#0D9488]" />
+                  Adicionar
+                </button>
               </div>
             </div>
 
-            {/* Tipos de Veículos */}
-            <div>
-              <label className="block text-xs font-semibold text-[#57534E] mb-1.5">
+            {/* Veículos e Carrocerias */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-[#57534E]">
                 Veículos e Carrocerias Necessárias
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {VEICULOS_DISPONIVEIS.map((v) => {
-                  const selected = veiculosSelecionados.includes(v);
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => toggleVeiculo(v)}
-                      className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${
-                        selected
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-white text-[#1C1917] border-[#E7E5E4] hover:bg-[#FAFAF9]"
-                      }`}
-                    >
-                      <span>{v}</span>
-                      {selected && <Check className="w-3 h-3 text-[#0D9488]" />}
-                    </button>
-                  );
-                })}
+
+              <div>
+                <span className="block text-[11px] font-medium text-[#78716C] mb-1.5">
+                  Porte / Configuração do Veículo
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {PORTES_VEICULOS.map((v) => {
+                    const selected = veiculosSelecionados.includes(v);
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => toggleVeiculo(v)}
+                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${
+                          selected
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-white text-[#1C1917] border-[#E7E5E4] hover:bg-[#FAFAF9]"
+                        }`}
+                      >
+                        <span>{v}</span>
+                        {selected && <Check className="w-3 h-3 text-[#0D9488]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <span className="block text-[11px] font-medium text-[#78716C] mb-1.5">
+                  Tipo de Carroceria
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {TIPOS_CARROCERIAS.map((c) => {
+                    const selected = veiculosSelecionados.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleVeiculo(c)}
+                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${
+                          selected
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-white text-[#1C1917] border-[#E7E5E4] hover:bg-[#FAFAF9]"
+                        }`}
+                      >
+                        <span>{c}</span>
+                        {selected && <Check className="w-3 h-3 text-[#0D9488]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {veiculosSelecionados.some(
+                (v) => !PORTES_VEICULOS.includes(v) && !TIPOS_CARROCERIAS.includes(v)
+              ) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {veiculosSelecionados
+                    .filter((v) => !PORTES_VEICULOS.includes(v) && !TIPOS_CARROCERIAS.includes(v))
+                    .map((veiculoCustom) => (
+                      <button
+                        key={veiculoCustom}
+                        type="button"
+                        onClick={() => toggleVeiculo(veiculoCustom)}
+                        title="Clique para remover"
+                        className="px-3 py-1.5 rounded-full text-xs font-medium border bg-slate-900 text-white border-slate-900 flex items-center gap-1.5 transition-all hover:bg-slate-800"
+                      >
+                        <Check className="w-3 h-3 text-[#0D9488]" />
+                        {veiculoCustom}
+                        <X className="w-3 h-3 opacity-80" />
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Outro veículo ou carroceria (ex: Prancha, Tanque, Vanderléia)"
+                  value={novoVeiculoInput}
+                  onChange={(e) => setNovoVeiculoInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomSelection(novoVeiculoInput, setVeiculosSelecionados, () =>
+                        setNovoVeiculoInput("")
+                      );
+                    }
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded-md border border-[#D6D3D1] bg-white text-xs focus-ring"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    addCustomSelection(novoVeiculoInput, setVeiculosSelecionados, () =>
+                      setNovoVeiculoInput("")
+                    )
+                  }
+                  disabled={!novoVeiculoInput.trim()}
+                  className="px-3 py-1.5 rounded-md border border-[#D6D3D1] bg-[#FAFAF9] hover:bg-[#F5F5F4] text-xs font-semibold text-[#1C1917] flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#0D9488]" />
+                  Adicionar
+                </button>
               </div>
             </div>
 
-            {/* Volume */}
+            {/* Volumetria */}
             <div>
               <label className="block text-xs font-semibold text-[#57534E] mb-1">
-                Volume Mensal Estimado
+                Volumetria
               </label>
               <input
                 type="text"
