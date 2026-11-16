@@ -40,7 +40,7 @@ export const Navbar: React.FC = () => {
   }
 
   const navLinkClass = (path: string) =>
-    `flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors ${
+    `flex items-center gap-1.5 px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors ${
       pathname === path
         ? "bg-[#F0FDFA] text-[#0D9488] font-semibold border border-[#99F6E4]"
         : "text-[#1C1917] hover:text-[#0D9488] hover:bg-[#F5F5F4]"
@@ -52,16 +52,21 @@ export const Navbar: React.FC = () => {
     <header className="sticky top-0 z-40 bg-[#FAFAF9]/95 backdrop-blur-md border-b border-[#E7E5E4]">
       <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
         {/* Brand com Logotipo Oficial CCargo (US-15 & US-16) */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <Link href={authUser ? "/" : "/login"} className="flex items-center group">
-            <CCargoLogo size="sm" showSubtitle={true} subtitleText="Prospecção" />
+            <CCargoLogo
+              size="sm"
+              showSubtitle={true}
+              hideSubtitleOnMobile={true}
+              subtitleText="Prospecção"
+            />
           </Link>
         </div>
 
         {/* Navigation links & Logged-in User Profile */}
         {authUser && pathname !== "/login" && !pathname?.startsWith("/definir-senha") ? (
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
-            <nav className="flex items-center gap-1">
+          <div className="flex items-center gap-1 sm:gap-2.5">
+            <nav className="flex items-center gap-0.5 sm:gap-1">
               <Link href="/" className={navLinkClass("/")}>
                 <BarChart3 className="w-4 h-4 text-[#78716C]" />
                 <span className="hidden md:inline">Funil</span>
@@ -125,7 +130,7 @@ export const Navbar: React.FC = () => {
 
             <Link
               href="/novo-lead"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#1E293B] rounded-md shadow-sm transition-all focus-ring"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-semibold text-white bg-[#0F172A] hover:bg-[#1E293B] rounded-md shadow-sm transition-all focus-ring whitespace-nowrap"
             >
               <UserPlus className="w-4 h-4 text-[#0D9488]" />
               <span>Novo Lead</span>

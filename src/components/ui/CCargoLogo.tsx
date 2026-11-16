@@ -4,6 +4,7 @@ interface CCargoLogoProps {
   className?: string;
   size?: "sm" | "md" | "lg";
   showSubtitle?: boolean;
+  hideSubtitleOnMobile?: boolean;
   subtitleText?: string;
 }
 
@@ -14,6 +15,7 @@ export const CCargoLogo: React.FC<CCargoLogoProps> = ({
   className = "",
   size = "md",
   showSubtitle = true,
+  hideSubtitleOnMobile = false,
   subtitleText = "Prospecção",
 }) => {
   const height = {
@@ -32,7 +34,11 @@ export const CCargoLogo: React.FC<CCargoLogoProps> = ({
       />
 
       {showSubtitle && (
-        <div className="border-l border-[#D6D3D1] pl-2.5 flex flex-col justify-center">
+        <div
+          className={`border-l border-[#D6D3D1] pl-2.5 flex-col justify-center ${
+            hideSubtitleOnMobile ? "hidden sm:flex" : "flex"
+          }`}
+        >
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#0D9488] leading-tight">
             {subtitleText}
           </span>
