@@ -169,8 +169,7 @@ function applyUserSecurityOverlay(users: AppUser[]): AppUser[] {
     const isPending =
       over?.status_senha === "pendente_definicao" ||
       u.status_senha === "pendente_definicao" ||
-      !u.senha ||
-      u.senha.startsWith("__PENDING_");
+      (!u.status_senha && (!u.senha || u.senha.startsWith("__PENDING_")));
 
     return {
       ...u,
@@ -189,9 +188,12 @@ export async function fetchAllAppUsers(): Promise<AppUser[]> {
   if (shouldUseServerApi()) {
     const res = await apiRequest<{ data?: AppUser[]; error?: string }>("/api/users");
     if (res.ok && res.data.data) {
-      const merged = applyUserSecurityOverlay(res.data.data);
-      saveLocalUsers(merged);
-      return merged;
+      const serverUsers = res.data.data.map((u) => ({
+        ...u,
+        status_senha: u.status_senha || "ativa",
+      }));
+      saveLocalUsers(serverUsers);
+      return serverUsers;
     }
     return [];
   }
