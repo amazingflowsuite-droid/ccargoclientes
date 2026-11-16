@@ -1,16 +1,26 @@
 import React from "react";
 import Link from "next/link";
-import { CollisionCheckResult } from "@/types";
-import { ShieldAlert, AlertTriangle, Info, CheckCircle2, Building2, ExternalLink } from "lucide-react";
+import { CollisionCheckResult, UserRole } from "@/types";
+import { ShieldAlert, AlertTriangle, Info, CheckCircle2, Building2, ExternalLink, ShieldCheck } from "lucide-react";
 import { formatCNPJ } from "@/lib/utils";
 import { getStageLabel } from "@/lib/kanban-stages";
+import { extractDeactivationInfo, getDeactivationLabel, isRestrictiveDeactivation } from "@/lib/deactivation";
 
 interface CollisionAlertProps {
   collision: CollisionCheckResult | null;
   checking: boolean;
+  userRole?: UserRole;
+  gestorOverride?: boolean;
+  onGestorOverride?: () => void;
 }
 
-export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, checking }) => {
+export const CollisionAlert: React.FC<CollisionAlertProps> = ({
+  collision,
+  checking,
+  userRole,
+  gestorOverride = false,
+  onGestorOverride,
+}) => {
   if (checking) {
     return (
       <div className="p-3.5 rounded-md border border-slate-200 bg-slate-50 text-slate-700 text-sm flex items-center gap-2.5 animate-pulse">
@@ -71,6 +81,81 @@ export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, check
                 )}
                 {exact_match.data_desqualificacao && (
                   <div><strong>Data da Desqualificação:</strong> {new Date(exact_match.data_desqualificacao).toLocaleDateString("pt-BR")}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (exact_match.status === "ex_cliente") {
+      const deact = extractDeactivationInfo(exact_match);
+      const restrictive = isRestrictiveDeactivation(deact.reason);
+
+      if (restrictive) {
+        return (
+          <div className="p-4 rounded-md border-2 border-red-400 bg-red-50 text-red-900 shadow-sm animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-2 w-full">
+                <div>
+                  <h4 className="font-bold text-base text-red-700">
+                    ⛔ EX-CLIENTE COM RESTRIÇÃO DE RETORNO
+                  </h4>
+                  <p className="text-sm text-red-800">
+                    Esta empresa já foi cliente da CCargo e teve o contrato encerrado por motivo crítico.{" "}
+                    {userRole === "gestor"
+                      ? "Como Gestor, você pode avaliar o histórico e autorizar o avanço manualmente."
+                      : "Apenas um Gestor pode avaliar e autorizar uma nova prospecção."}
+                  </p>
+                </div>
+                <div className="p-3 bg-white/85 rounded border border-red-200 text-xs space-y-1">
+                  <div><strong>Razão Social:</strong> {exact_match.razao_social}</div>
+                  <div><strong>Motivo da Saída:</strong> <span className="font-semibold text-red-700">{getDeactivationLabel(deact.reason)}</span></div>
+                  {deact.detail && <div><strong>Observação:</strong> {deact.detail}</div>}
+                  {deact.date && (
+                    <div><strong>Data da Desativação:</strong> {new Date(deact.date).toLocaleDateString("pt-BR")}</div>
+                  )}
+                </div>
+                {userRole === "gestor" && onGestorOverride && (
+                  <button
+                    type="button"
+                    onClick={onGestorOverride}
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                      gestorOverride
+                        ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                        : "bg-red-700 text-white hover:bg-red-800"
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {gestorOverride
+                      ? "Reprospecção Autorizada pelo Gestor (Clique para revogar)"
+                      : "Avaliar e Autorizar Reprospecção (Alçada Gestor)"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="p-4 rounded-md border-2 border-amber-400 bg-amber-50 text-amber-950 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+            <div className="space-y-1.5 w-full">
+              <h4 className="font-bold text-sm text-amber-900">
+                ℹ️ EX-CLIENTE DA CCARGO — ELEGÍVEL PARA RECONQUISTA
+              </h4>
+              <p className="text-xs text-amber-800">
+                Esta empresa já integrou a carteira ativa e foi desativada sem restrição crítica. Você pode prosseguir com nova prospecção considerando o histórico abaixo:
+              </p>
+              <div className="p-2.5 bg-white/90 rounded border border-amber-200 text-xs space-y-1">
+                <div><strong>Motivo da Saída:</strong> {getDeactivationLabel(deact.reason)}</div>
+                {deact.detail && <div><strong>Observação:</strong> {deact.detail}</div>}
+                {deact.date && (
+                  <div><strong>Data da Desativação:</strong> {new Date(deact.date).toLocaleDateString("pt-BR")}</div>
                 )}
               </div>
             </div>
@@ -204,6 +289,11 @@ export const CollisionAlert: React.FC<CollisionAlertProps> = ({ collision, check
                     {acc.status === "lead" && (
                       <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[11px]">
                         Em Prospecção
+                      </span>
+                    )}
+                    {acc.status === "ex_cliente" && (
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-semibold rounded text-[11px]">
+                        Ex-Cliente
                       </span>
                     )}
                   </div>

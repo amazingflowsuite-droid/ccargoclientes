@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Account, ContactLog } from "@/types";
+import { Account, ContactLog, StageTransition } from "@/types";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatCNPJ } from "@/lib/utils";
+import { getStageLabel } from "@/lib/kanban-stages";
 import { generateClientDossierPDF } from "@/lib/pdf-report";
 import {
   Printer,
@@ -15,11 +16,14 @@ import {
   Plus,
   XCircle,
   ChevronRight,
+  GitCommitHorizontal,
+  ArrowRight,
 } from "lucide-react";
 
 interface LeadDetailsModalProps {
   selectedLead: Account;
   leadLogs: ContactLog[];
+  stageTransitions?: StageTransition[];
   editObservacoes: string;
   setEditObservacoes: (v: string) => void;
   isSavingNotes: boolean;
@@ -43,6 +47,7 @@ interface LeadDetailsModalProps {
 export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   selectedLead,
   leadLogs,
+  stageTransitions = [],
   editObservacoes,
   setEditObservacoes,
   isSavingNotes,
@@ -62,6 +67,34 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   onDisqualify,
   onClose,
 }) => {
+  const [historyTab, setHistoryTab] = React.useState<"all" | "contacts" | "transitions">("all");
+
+  const unifiedTimeline = React.useMemo(() => {
+    const contactItems = leadLogs.map((log) => ({
+      kind: "contact" as const,
+      id: `contact-${log.id}`,
+      created_at: log.created_at,
+      log,
+    }));
+    const transitionItems = stageTransitions.map((transition) => ({
+      kind: "transition" as const,
+      id: `transition-${transition.id}`,
+      created_at: transition.created_at,
+      transition,
+    }));
+
+    const combined =
+      historyTab === "contacts"
+        ? contactItems
+        : historyTab === "transitions"
+        ? transitionItems
+        : [...contactItems, ...transitionItems];
+
+    return combined.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [leadLogs, stageTransitions, historyTab]);
+
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -313,11 +346,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </div>
         </form>
 
-        {/* Linha do Tempo de Touchpoints */}
+        {/* Linha do Tempo Unificada (Contatos + Movimentações) */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="font-serif font-bold text-xs uppercase tracking-wider text-[#57534E]">
-              Histórico de Tentativas e Ligações ({leadLogs.length})
+              Histórico do Card ({leadLogs.length + stageTransitions.length})
             </h4>
             <button
               type="button"
@@ -329,53 +362,145 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             </button>
           </div>
 
-          {leadLogs.length === 0 ? (
+          <div className="flex items-center gap-1.5 border-b border-[#E7E5E4] pb-2">
+            <button
+              type="button"
+              onClick={() => setHistoryTab("all")}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                historyTab === "all"
+                  ? "bg-[#0F172A] text-white"
+                  : "bg-[#F5F5F4] text-[#57534E] hover:bg-[#E7E5E4]"
+              }`}
+            >
+              Tudo ({leadLogs.length + stageTransitions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryTab("contacts")}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                historyTab === "contacts"
+                  ? "bg-[#0F172A] text-white"
+                  : "bg-[#F5F5F4] text-[#57534E] hover:bg-[#E7E5E4]"
+              }`}
+            >
+              Contatos ({leadLogs.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryTab("transitions")}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                historyTab === "transitions"
+                  ? "bg-[#0F172A] text-white"
+                  : "bg-[#F5F5F4] text-[#57534E] hover:bg-[#E7E5E4]"
+              }`}
+            >
+              Movimentações ({stageTransitions.length})
+            </button>
+          </div>
+
+          {unifiedTimeline.length === 0 ? (
             <div className="p-4 text-center text-xs text-[#A8A29E] italic border border-dashed rounded">
-              Nenhum registro de ligação ou mensagem anterior para este lead.
+              {historyTab === "contacts"
+                ? "Nenhum registro de ligação ou mensagem anterior para este lead."
+                : historyTab === "transitions"
+                ? "Nenhuma movimentação de etapa registrada ainda para este card."
+                : "Nenhum registro de contato ou movimentação encontrado para este card."}
             </div>
           ) : (
             <div className="space-y-2.5">
-              {leadLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="p-3 bg-white rounded border border-[#E7E5E4] text-xs space-y-1"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#78716C]">
-                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                      {log.tipo_contato === "telefone" && "📞 Ligação"}
-                      {log.tipo_contato === "whatsapp" && "💬 WhatsApp"}
-                      {log.tipo_contato === "email" && "✉️ E-mail"}
-                      {log.tipo_contato === "reuniao" && "🤝 Reunião"}
-                      <span
-                        className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${
-                          log.resultado === "sucesso"
-                            ? "bg-emerald-100 text-emerald-800"
+              {unifiedTimeline.map((item) => {
+                if (item.kind === "transition") {
+                  const t = item.transition;
+                  const statusChanged = t.from_status && t.from_status !== t.to_status;
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 bg-[#FAFAF9] rounded border border-[#E7E5E4] text-xs space-y-1"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#78716C]">
+                        <span className="font-semibold text-slate-800 flex flex-wrap items-center gap-1.5">
+                          <GitCommitHorizontal className="w-3.5 h-3.5 text-[#0D9488]" />
+                          {t.from_stage ? (
+                            <span className="inline-flex flex-wrap items-center gap-1">
+                              <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-medium text-[10px]">
+                                {getStageLabel(t.from_stage)}
+                              </span>
+                              <ArrowRight className="w-3 h-3 text-[#78716C]" />
+                              <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-900 font-semibold text-[10px]">
+                                {getStageLabel(t.to_stage)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <span>Card criado em</span>
+                              <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-900 font-semibold text-[10px]">
+                                {getStageLabel(t.to_stage)}
+                              </span>
+                            </span>
+                          )}
+                          {statusChanged && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold text-[10px]">
+                              Status: {t.to_status}
+                            </span>
+                          )}
+                          <span className="text-[#57534E] font-normal">
+                            • por <strong>{t.usuario_nome}</strong>
+                          </span>
+                        </span>
+                        <span className="font-mono">
+                          {new Date(t.created_at).toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                      {t.motivo && (
+                        <p className="text-[#57534E] text-[11px] pt-0.5">{t.motivo}</p>
+                      )}
+                    </div>
+                  );
+                }
+
+                const log = item.log;
+                return (
+                  <div
+                    key={item.id}
+                    className="p-3 bg-white rounded border border-[#E7E5E4] text-xs space-y-1"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#78716C]">
+                      <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                        {log.tipo_contato === "telefone" && "📞 Ligação"}
+                        {log.tipo_contato === "whatsapp" && "💬 WhatsApp"}
+                        {log.tipo_contato === "email" && "✉️ E-mail"}
+                        {log.tipo_contato === "reuniao" && "🤝 Reunião"}
+                        <span
+                          className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${
+                            log.resultado === "sucesso"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : log.resultado === "sem_resposta"
+                              ? "bg-slate-100 text-slate-700"
+                              : log.resultado === "reagendado"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {log.resultado === "sucesso"
+                            ? "Contato com Sucesso"
                             : log.resultado === "sem_resposta"
-                            ? "bg-slate-100 text-slate-700"
+                            ? "Sem Resposta / Caixa Postal"
                             : log.resultado === "reagendado"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {log.resultado === "sucesso"
-                          ? "Contato com Sucesso"
-                          : log.resultado === "sem_resposta"
-                          ? "Sem Resposta / Caixa Postal"
-                          : log.resultado === "reagendado"
-                          ? "Reagendado"
-                          : "Sem Interesse"}
+                            ? "Reagendado"
+                            : "Sem Interesse"}
+                        </span>
+                        <span className="text-[#57534E] font-normal">
+                          • por <strong>{log.usuario_nome}</strong>
+                        </span>
                       </span>
-                      <span className="text-[#57534E] font-normal">
-                        • por <strong>{log.usuario_nome}</strong>
+                      <span className="font-mono">
+                        {new Date(log.created_at).toLocaleString("pt-BR")}
                       </span>
-                    </span>
-                    <span className="font-mono">
-                      {new Date(log.created_at).toLocaleString("pt-BR")}
-                    </span>
+                    </div>
+                    <p className="text-slate-800 pt-0.5">{log.resumo}</p>
                   </div>
-                  <p className="text-slate-800 pt-0.5">{log.resumo}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

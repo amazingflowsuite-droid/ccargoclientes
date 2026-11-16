@@ -24,6 +24,7 @@ import {
   NEGOTIATION_AND_PROPOSAL_STAGES,
   normalizeLeadStage,
 } from "@/lib/kanban-stages";
+import { computeStageDurationsFromTransitions } from "@/lib/stage-history";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ArrowLeft,
@@ -311,42 +312,55 @@ export default function RelatoriosPage() {
     };
 
     const closedLeadTimesDays: number[] = [];
-    const openLeadTimesDays: number[] = [];
 
     const accountTimings = filteredAccounts.map((acc) => {
       const hist = acc.stage_history || {};
       const startMs = new Date(hist.prospeccao_inicial || acc.created_at).getTime();
       const isClosedWon = acc.estagio === "fechado_ganho" || acc.status === "cliente_ativo";
+      const closedAtIso = acc.fechado_em || hist.fechado_ganho || acc.updated_at;
+      const isClosedInSelectedMonth = isClosedWon && isInSelectedMonth(closedAtIso);
       const endMs = isClosedWon
-        ? new Date(acc.fechado_em || hist.fechado_ganho || acc.updated_at).getTime()
+        ? new Date(closedAtIso).getTime()
         : acc.status === "desqualificado" && acc.data_desqualificacao
         ? new Date(acc.data_desqualificacao).getTime()
         : Date.now();
 
       const totalLeadTimeDays = Math.max(0.5, Number(((Math.max(startMs, endMs) - startMs) / DAY_MS).toFixed(1)));
-      if (isClosedWon) {
+      if (isClosedInSelectedMonth) {
         closedLeadTimesDays.push(totalLeadTimeDays);
-      } else if (acc.status === "lead") {
-        openLeadTimesDays.push(totalLeadTimeDays);
       }
 
-      // Calcula o Cycle Time em cada coluna pela qual o card passou
+      // Calcula o Cycle Time em cada coluna pela qual o card passou (priorizando eventos reais do banco)
       const currentStage = normalizeLeadStage(acc.estagio);
-      const perStageDays: Partial<Record<LeadStage, number>> = {};
-      for (let i = 0; i < ORDERED_STAGE_KEYS.length - 1; i++) {
-        const currKey = ORDERED_STAGE_KEYS[i];
-        const nextKey = ORDERED_STAGE_KEYS[i + 1];
-        const tStart = hist[currKey] ? new Date(hist[currKey]!).getTime() : null;
-        const tNext = hist[nextKey] ? new Date(hist[nextKey]!).getTime() : null;
+      let perStageDays: Partial<Record<LeadStage, number>> = {};
 
-        if (tStart && tNext && tNext >= tStart) {
-          const d = Math.max(0.3, Number(((tNext - tStart) / DAY_MS).toFixed(1)));
-          perStageDays[currKey] = d;
-          stageDurationsDays[currKey].push(d);
-        } else if (tStart && currentStage === currKey) {
-          const d = Math.max(0.5, Number(((Math.max(tStart, endMs) - tStart) / DAY_MS).toFixed(1)));
-          perStageDays[currKey] = d;
-          stageDurationsDays[currKey].push(d);
+      if (acc.stage_transitions && acc.stage_transitions.length > 0) {
+        perStageDays = computeStageDurationsFromTransitions(acc.stage_transitions, endMs);
+        if (isClosedInSelectedMonth) {
+          for (const currKey of ORDERED_STAGE_KEYS.slice(0, -1)) {
+            const d = perStageDays[currKey];
+            if (typeof d === "number") {
+              stageDurationsDays[currKey].push(d);
+            }
+          }
+        }
+      } else {
+        for (let i = 0; i < ORDERED_STAGE_KEYS.length - 1; i++) {
+          const currKey = ORDERED_STAGE_KEYS[i];
+          const nextKey = ORDERED_STAGE_KEYS[i + 1];
+          const tStart = hist[currKey] ? new Date(hist[currKey]!).getTime() : null;
+          const tNext = hist[nextKey] ? new Date(hist[nextKey]!).getTime() : null;
+
+          if (tStart && tNext && tNext >= tStart) {
+            const d = Math.max(0.3, Number(((tNext - tStart) / DAY_MS).toFixed(1)));
+            perStageDays[currKey] = d;
+            if (isClosedInSelectedMonth) {
+              stageDurationsDays[currKey].push(d);
+            }
+          } else if (tStart && currentStage === currKey) {
+            const d = Math.max(0.5, Number(((Math.max(tStart, endMs) - tStart) / DAY_MS).toFixed(1)));
+            perStageDays[currKey] = d;
+          }
         }
       }
 
@@ -385,15 +399,7 @@ export default function RelatoriosPage() {
       activeCycleColumns.reduce((acc, c) => acc + c.avgDays, 0).toFixed(1)
     );
 
-    const avgOpenLeadTime =
-      openLeadTimesDays.length > 0
-        ? Number(
-            (openLeadTimesDays.reduce((a, b) => a + b, 0) / openLeadTimesDays.length).toFixed(1)
-          )
-        : 0;
-
-    // Opção A: Usa a média real dos negócios ganhos no filtro; se não houver fechamentos no filtro,
-    // exibe a soma real do tempo acumulado das etapas percorridas pelos leads filtrados.
+    // Calcula Lead Time médio exclusivamente sobre negócios ganhos cuja data de fechamento está no período
     const avgClosedLeadTime =
       closedLeadTimesDays.length > 0
         ? Number(
@@ -401,9 +407,7 @@ export default function RelatoriosPage() {
               closedLeadTimesDays.reduce((a, b) => a + b, 0) / closedLeadTimesDays.length
             ).toFixed(1)
           )
-        : cycleSum > 0
-        ? cycleSum
-        : avgOpenLeadTime;
+        : null;
 
     const totalCycleSum = cycleSum;
 
@@ -417,12 +421,12 @@ export default function RelatoriosPage() {
     return {
       columnsCycleTime,
       avgClosedLeadTime,
-      avgOpenLeadTime,
+      closedCount: closedLeadTimesDays.length,
       totalCycleSum,
       bottleneckColumn,
       accountTimings,
     };
-  }, [filteredAccounts]);
+  }, [filteredAccounts, selectedMonth]);
 
   function handlePrintMonthlyReport() {
     const monthObj = MONTHS.find((m) => m.value === selectedMonth);
@@ -831,7 +835,9 @@ export default function RelatoriosPage() {
                 Lead Time Médio (1º Contato ➔ Fechado/Ganho)
               </span>
               <span className="font-serif text-lg font-bold text-[#115E59]">
-                {workflowTiming.avgClosedLeadTime} dias corridos
+                {workflowTiming.avgClosedLeadTime !== null
+                  ? `${workflowTiming.avgClosedLeadTime} dias corridos`
+                  : "Sem fechamentos no período"}
               </span>
             </div>
           </div>
@@ -881,11 +887,19 @@ export default function RelatoriosPage() {
                         Lead Time Total
                       </span>
                       <div className="text-xl font-serif font-bold text-[#047857] mt-0.5">
-                        {workflowTiming.avgClosedLeadTime}{" "}
-                        <span className="text-xs font-sans font-normal">dias</span>
+                        {workflowTiming.avgClosedLeadTime !== null ? (
+                          <>
+                            {workflowTiming.avgClosedLeadTime}{" "}
+                            <span className="text-xs font-sans font-normal">dias</span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
                       </div>
                       <span className="text-[10px] text-[#0F766E] block mt-0.5">
-                        Do 1º Contato ao Ganho
+                        {workflowTiming.avgClosedLeadTime !== null
+                          ? "Do 1º Contato ao Ganho"
+                          : "Sem fechamentos no período"}
                       </span>
                     </>
                   ) : (
@@ -894,8 +908,14 @@ export default function RelatoriosPage() {
                         Cycle Time Médio
                       </span>
                       <div className="text-xl font-serif font-bold text-[#1C1917] mt-0.5">
-                        {col.avgDays}{" "}
-                        <span className="text-xs font-sans font-normal text-[#57534E]">dias</span>
+                        {col.samplesCount > 0 ? (
+                          <>
+                            {col.avgDays}{" "}
+                            <span className="text-xs font-sans font-normal text-[#57534E]">dias</span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
                       </div>
                       <span className="text-[10px] text-[#78716C] block mt-0.5">
                         {col.countInStage} card(s) nesta etapa
@@ -927,7 +947,9 @@ export default function RelatoriosPage() {
 
           {workflowTiming.totalCycleSum === 0 ? (
             <div className="w-full h-8 rounded-md flex items-center justify-center bg-[#FAFAF9] border border-[#E7E5E4] text-xs text-[#78716C] italic">
-              Sem dados de transição nas colunas para o filtro selecionado.
+              {workflowTiming.closedCount === 0
+                ? "Sem fechamentos no período para compor o Cycle Time."
+                : "Sem dados de transição nas colunas para o filtro selecionado."}
             </div>
           ) : (
             <div className="w-full h-6 rounded-md overflow-hidden flex border border-[#D6D3D1]">

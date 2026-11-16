@@ -132,6 +132,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- Migração Segura (caso a tabela já exista sem as colunas opcionais)
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS observacoes_importantes TEXT;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS kanban_order DOUBLE PRECISION;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS motivo_desativacao TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS detalhe_desativacao TEXT;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS data_desativacao TIMESTAMPTZ;
 
 -- Índices de Alta Performance
 CREATE INDEX IF NOT EXISTS idx_accounts_cnpj ON accounts(cnpj);
@@ -156,6 +159,22 @@ CREATE INDEX IF NOT EXISTS idx_contact_logs_account ON contact_logs(account_id);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_created_at ON contact_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_contact_logs_usuario ON contact_logs(usuario_nome);
 
+-- 4.1 HISTÓRICO DE TRANSIÇÕES DE ESTÁGIO / STATUS NO FUNIL
+CREATE TABLE IF NOT EXISTS account_stage_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  from_stage TEXT,
+  to_stage TEXT NOT NULL,
+  from_status TEXT,
+  to_status TEXT NOT NULL,
+  usuario_nome TEXT NOT NULL DEFAULT 'Sistema',
+  motivo TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_stage_history_account_created
+  ON account_stage_history(account_id, created_at DESC);
+
 -- 5. POLÍTICAS DE ROW LEVEL SECURITY (RLS) — FECHADO PARA ACESSO DIRETO VIA ANON KEY
 -- Toda leitura e gravação deve passar pelas rotas de API do Next.js (/api/*) usando SUPABASE_SERVICE_ROLE_KEY.
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
@@ -171,6 +190,8 @@ DROP POLICY IF EXISTS "Permitir leitura publica contact_logs" ON contact_logs;
 DROP POLICY IF EXISTS "Permitir insercao publica contact_logs" ON contact_logs;
 DROP POLICY IF EXISTS "Permitir atualizacao publica contact_logs" ON contact_logs;
 DROP POLICY IF EXISTS "Permitir exclusao publica contact_logs" ON contact_logs;
+
+ALTER TABLE account_stage_history ENABLE ROW LEVEL SECURITY;
 
 -- 6. FUNÇÃO RPC PARA VERIFICAÇÃO HÍBRIDA DE CNPJ (US-01 e US-02)
 CREATE OR REPLACE FUNCTION check_cnpj_collision(p_cnpj VARCHAR(14))

@@ -12,6 +12,7 @@ import {
 } from "@/lib/store";
 import { fetchCompanyByCNPJ } from "@/lib/brasil-api";
 import { cleanCNPJ, formatCNPJ } from "@/lib/utils";
+import { extractDeactivationInfo, isRestrictiveDeactivation } from "@/lib/deactivation";
 import { CollisionCheckResult, OperatorUser, AppUser } from "@/types";
 import { CollisionAlert } from "@/components/CollisionAlert";
 import {
@@ -91,6 +92,7 @@ export default function NovoLeadPage() {
   const [isSearchingBrasilApi, setIsSearchingBrasilApi] = useState(false);
   const [isCheckingCollision, setIsCheckingCollision] = useState(false);
   const [collisionResult, setCollisionResult] = useState<CollisionCheckResult | null>(null);
+  const [gestorOverrideExClient, setGestorOverrideExClient] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -105,6 +107,7 @@ export default function NovoLeadPage() {
 
   // Efeito com debounce para verificar colisão no banco assim que atinge 14 dígitos
   useEffect(() => {
+    setGestorOverrideExClient(false);
     const clean = cleanCNPJ(cnpjInput);
     if (clean.length === 14) {
       const timer = setTimeout(() => {
@@ -182,16 +185,25 @@ export default function NovoLeadPage() {
   // Bloqueio Rígido se for cliente ativo (US-01) ou lead em andamento no pipeline (US-11)
   const isClienteAtivo = Boolean(
     collisionResult?.has_exact_collision &&
-      collisionResult.exact_match?.status === "cliente_ativo"
+    collisionResult.exact_match?.status === "cliente_ativo"
   );
 
   const isLeadInPipeline = Boolean(
     collisionResult?.has_exact_collision &&
-      collisionResult.exact_match?.status === "lead" &&
-      collisionResult.exact_match?.estagio !== "perdido"
+    collisionResult.exact_match?.status === "lead" &&
+    collisionResult.exact_match?.estagio !== "perdido"
   );
 
-  const isStrictBlocked = isClienteAtivo || isLeadInPipeline;
+  const isExClientRestrictive = Boolean(
+    collisionResult?.has_exact_collision &&
+    collisionResult.exact_match?.status === "ex_cliente" &&
+    isRestrictiveDeactivation(extractDeactivationInfo(collisionResult.exact_match).reason)
+  );
+
+  const isExClientBlocked =
+    isExClientRestrictive && (authUser?.perfil !== "gestor" || !gestorOverrideExClient);
+
+  const isStrictBlocked = isClienteAtivo || isLeadInPipeline || isExClientBlocked;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -342,7 +354,13 @@ export default function NovoLeadPage() {
 
             {/* Painel de Alerta de Colisão / Bloqueio (US-01 e US-02) */}
             <div className="pt-2">
-              <CollisionAlert collision={collisionResult} checking={isCheckingCollision} />
+              <CollisionAlert
+                collision={collisionResult}
+                checking={isCheckingCollision}
+                userRole={authUser?.perfil}
+                gestorOverride={gestorOverrideExClient}
+                onGestorOverride={() => setGestorOverrideExClient((v) => !v)}
+              />
             </div>
           </div>
 
@@ -430,11 +448,10 @@ export default function NovoLeadPage() {
                     key={tipo}
                     type="button"
                     onClick={() => setTipoCarga(tipo)}
-                    className={`px-3 py-2 rounded-md text-xs font-medium border text-center transition-all ${
-                      tipoCarga === tipo
+                    className={`px-3 py-2 rounded-md text-xs font-medium border text-center transition-all ${tipoCarga === tipo
                         ? "bg-[#0F172A] text-white border-[#0F172A] shadow-sm"
                         : "bg-white text-[#1C1917] border-[#D6D3D1] hover:bg-[#F5F5F4]"
-                    }`}
+                      }`}
                   >
                     {tipo}
                   </button>
@@ -455,11 +472,10 @@ export default function NovoLeadPage() {
                       key={rota}
                       type="button"
                       onClick={() => toggleRota(rota)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all ${
-                        selected
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all ${selected
                           ? "bg-[#0D9488] text-white border-[#0D9488]"
                           : "bg-[#FAFAF9] text-[#57534E] border-[#E7E5E4] hover:border-[#78716C]"
-                      }`}
+                        }`}
                     >
                       {selected && <Check className="w-3 h-3" />}
                       {rota}
@@ -532,11 +548,10 @@ export default function NovoLeadPage() {
                         key={v}
                         type="button"
                         onClick={() => toggleVeiculo(v)}
-                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${
-                          selected
+                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${selected
                             ? "bg-slate-900 text-white border-slate-900"
                             : "bg-white text-[#1C1917] border-[#E7E5E4] hover:bg-[#FAFAF9]"
-                        }`}
+                          }`}
                       >
                         <span>{v}</span>
                         {selected && <Check className="w-3 h-3 text-[#0D9488]" />}
@@ -558,11 +573,10 @@ export default function NovoLeadPage() {
                         key={c}
                         type="button"
                         onClick={() => toggleVeiculo(c)}
-                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${
-                          selected
+                        className={`p-2.5 rounded-md text-left text-xs font-medium border flex items-center justify-between transition-all ${selected
                             ? "bg-slate-900 text-white border-slate-900"
                             : "bg-white text-[#1C1917] border-[#E7E5E4] hover:bg-[#FAFAF9]"
-                        }`}
+                          }`}
                       >
                         <span>{c}</span>
                         {selected && <Check className="w-3 h-3 text-[#0D9488]" />}
@@ -575,24 +589,24 @@ export default function NovoLeadPage() {
               {veiculosSelecionados.some(
                 (v) => !PORTES_VEICULOS.includes(v) && !TIPOS_CARROCERIAS.includes(v)
               ) && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {veiculosSelecionados
-                    .filter((v) => !PORTES_VEICULOS.includes(v) && !TIPOS_CARROCERIAS.includes(v))
-                    .map((veiculoCustom) => (
-                      <button
-                        key={veiculoCustom}
-                        type="button"
-                        onClick={() => toggleVeiculo(veiculoCustom)}
-                        title="Clique para remover"
-                        className="px-3 py-1.5 rounded-full text-xs font-medium border bg-slate-900 text-white border-slate-900 flex items-center gap-1.5 transition-all hover:bg-slate-800"
-                      >
-                        <Check className="w-3 h-3 text-[#0D9488]" />
-                        {veiculoCustom}
-                        <X className="w-3 h-3 opacity-80" />
-                      </button>
-                    ))}
-                </div>
-              )}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {veiculosSelecionados
+                      .filter((v) => !PORTES_VEICULOS.includes(v) && !TIPOS_CARROCERIAS.includes(v))
+                      .map((veiculoCustom) => (
+                        <button
+                          key={veiculoCustom}
+                          type="button"
+                          onClick={() => toggleVeiculo(veiculoCustom)}
+                          title="Clique para remover"
+                          className="px-3 py-1.5 rounded-full text-xs font-medium border bg-slate-900 text-white border-slate-900 flex items-center gap-1.5 transition-all hover:bg-slate-800"
+                        >
+                          <Check className="w-3 h-3 text-[#0D9488]" />
+                          {veiculoCustom}
+                          <X className="w-3 h-3 opacity-80" />
+                        </button>
+                      ))}
+                  </div>
+                )}
 
               <div className="flex gap-2">
                 <input
@@ -739,16 +753,17 @@ export default function NovoLeadPage() {
           <button
             type="submit"
             disabled={isSaving || isStrictBlocked}
-            className={`px-6 py-2.5 rounded-md text-sm font-semibold text-white shadow-sm transition-all focus-ring ${
-              isClienteAtivo
+            className={`px-6 py-2.5 rounded-md text-sm font-semibold text-white shadow-sm transition-all focus-ring ${isClienteAtivo || isExClientBlocked
                 ? "bg-red-400 cursor-not-allowed opacity-80"
                 : isLeadInPipeline
-                ? "bg-amber-600 cursor-not-allowed opacity-85"
-                : "bg-[#0D9488] hover:bg-[#0F766E]"
-            }`}
+                  ? "bg-amber-600 cursor-not-allowed opacity-85"
+                  : "bg-[#0D9488] hover:bg-[#0F766E]"
+              }`}
           >
             {isClienteAtivo ? (
               "⛔ Contato Bloqueado (Cliente da Carteira)"
+            ) : isExClientBlocked ? (
+              "⛔ Reprospecção Restrita (Requer Alçada de Gestor)"
             ) : isLeadInPipeline ? (
               "⛔ Prospecção Bloqueada (Lead em Andamento)"
             ) : isSaving ? (

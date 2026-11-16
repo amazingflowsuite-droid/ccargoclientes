@@ -2,17 +2,42 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { fetchAllAccounts, createAccount, deleteAccount } from "@/lib/store";
+import { fetchAllAccounts, createAccount, updateAccount, getAuthenticatedUser } from "@/lib/store";
 import { fetchCompanyByCNPJ } from "@/lib/brasil-api";
-import { Account } from "@/types";
+import { Account, AppUser, DeactivationReason } from "@/types";
 import { formatCNPJ, cleanCNPJ } from "@/lib/utils";
+import {
+  DEACTIVATION_REASONS,
+  extractDeactivationInfo,
+  getDeactivationLabel,
+  isRestrictiveDeactivation,
+} from "@/lib/deactivation";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { ShieldCheck, Plus, Search, Trash2, ArrowLeft, Building2, User, Loader2, Sparkles } from "lucide-react";
+import {
+  ShieldCheck,
+  Plus,
+  Search,
+  UserX,
+  RotateCcw,
+  ArrowLeft,
+  Loader2,
+  Sparkles,
+  AlertTriangle,
+} from "lucide-react";
 
 export default function ClientesAtivosPage() {
   const [clientes, setClientes] = useState<Account[]>([]);
+  const [exClientes, setExClientes] = useState<Account[]>([]);
+  const [activeTab, setActiveTab] = useState<"ativos" | "ex_clientes">("ativos");
+  const [authUser, setAuthUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Modal de Desativação (apenas Gestor)
+  const [deactivatingClient, setDeactivatingClient] = useState<Account | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState<DeactivationReason>("fim_contrato");
+  const [deactivationDetail, setDeactivationDetail] = useState("");
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   // Modal de Novo Cliente Ativo
   const [showModal, setShowModal] = useState(false);
@@ -23,7 +48,10 @@ export default function ClientesAtivosPage() {
   const [isSearchingApi, setIsSearchingApi] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const isGestor = authUser?.perfil === "gestor";
+
   useEffect(() => {
+    setAuthUser(getAuthenticatedUser());
     loadClientes();
   }, []);
 
@@ -32,6 +60,7 @@ export default function ClientesAtivosPage() {
     try {
       const data = await fetchAllAccounts();
       setClientes(data.filter((a) => a.status === "cliente_ativo"));
+      setExClientes(data.filter((a) => a.status === "ex_cliente"));
     } finally {
       setLoading(false);
     }
@@ -80,14 +109,56 @@ export default function ClientesAtivosPage() {
     }
   }
 
-  async function handleRemover(id: string, razao: string) {
-    if (confirm(`Remover "${razao}" da base de clientes ativos? A proteção de bloqueio será desativada para este CNPJ.`)) {
-      await deleteAccount(id);
-      loadClientes();
+  function openDeactivateModal(cli: Account) {
+    setDeactivatingClient(cli);
+    setDeactivationReason("fim_contrato");
+    setDeactivationDetail("");
+  }
+
+  async function handleConfirmDeactivate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!deactivatingClient || !isGestor) return;
+    if (deactivationReason === "outro" && !deactivationDetail.trim()) {
+      alert("Descreva o motivo da desativação.");
+      return;
+    }
+
+    setIsDeactivating(true);
+    try {
+      await updateAccount(deactivatingClient.id, {
+        status: "ex_cliente",
+        motivo_desativacao: deactivationReason,
+        detalhe_desativacao: deactivationDetail.trim() || undefined,
+        data_desativacao: new Date().toISOString(),
+      });
+      setDeactivatingClient(null);
+      await loadClientes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao desativar cliente.");
+    } finally {
+      setIsDeactivating(false);
     }
   }
 
-  const filtered = clientes.filter((c) => {
+  async function handleReactivate(cli: Account) {
+    if (!isGestor) return;
+    if (!confirm(`Reativar "${cli.razao_social}" na carteira de clientes ativos?`)) return;
+    try {
+      await updateAccount(cli.id, {
+        status: "cliente_ativo",
+        motivo_desativacao: undefined,
+        detalhe_desativacao: undefined,
+        data_desativacao: undefined,
+      });
+      await loadClientes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao reativar cliente.");
+    }
+  }
+
+  const currentList = activeTab === "ativos" ? clientes : exClientes;
+
+  const filtered = currentList.filter((c) => {
     if (!search.trim()) return true;
     const term = search.toLowerCase();
     return (
@@ -133,8 +204,33 @@ export default function ClientesAtivosPage() {
         </button>
       </div>
 
-      {/* Busca */}
-      <div className="bg-white p-4 rounded-lg border border-[#E7E5E4] shadow-subtle flex items-center justify-between gap-4">
+      {/* Abas + Busca */}
+      <div className="bg-white p-4 rounded-lg border border-[#E7E5E4] shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("ativos")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              activeTab === "ativos"
+                ? "bg-[#0F172A] text-white"
+                : "bg-[#F5F5F4] text-[#57534E] hover:text-[#1C1917]"
+            }`}
+          >
+            Clientes Ativos ({clientes.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ex_clientes")}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+              activeTab === "ex_clientes"
+                ? "bg-[#0F172A] text-white"
+                : "bg-[#F5F5F4] text-[#57534E] hover:text-[#1C1917]"
+            }`}
+          >
+            Ex-Clientes ({exClientes.length})
+          </button>
+        </div>
+
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-[#78716C] absolute left-3 top-2.5" />
           <input
@@ -146,7 +242,7 @@ export default function ClientesAtivosPage() {
           />
         </div>
         <span className="text-xs text-[#57534E]">
-          Total protegido: <strong>{filtered.length}</strong> empresas
+          Exibindo: <strong>{filtered.length}</strong> empresas
         </span>
       </div>
 
@@ -159,8 +255,12 @@ export default function ClientesAtivosPage() {
                 <th className="py-3 px-4">Empresa / Razão Social</th>
                 <th className="py-3 px-4">CNPJ</th>
                 <th className="py-3 px-4">Status & Proteção</th>
-                <th className="py-3 px-4">Executivo / Gerente de Conta</th>
-                <th className="py-3 px-4">Volumetria</th>
+                <th className="py-3 px-4">
+                  {activeTab === "ativos" ? "Executivo / Gerente de Conta" : "Motivo da Desativação"}
+                </th>
+                <th className="py-3 px-4">
+                  {activeTab === "ativos" ? "Volumetria" : "Data da Saída"}
+                </th>
                 <th className="py-3 px-4 text-right">Ação</th>
               </tr>
             </thead>
@@ -174,49 +274,173 @@ export default function ClientesAtivosPage() {
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-[#A8A29E] italic">
-                    Nenhum cliente ativo cadastrado no momento.
+                    {activeTab === "ativos"
+                      ? "Nenhum cliente ativo cadastrado no momento."
+                      : "Nenhum ex-cliente registrado."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((cli) => (
-                  <tr key={cli.id} className="hover:bg-[#FAFAF9] transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="font-serif font-bold text-sm text-[#1C1917]">
-                        {cli.razao_social}
-                      </div>
-                      {cli.nome_fantasia && (
-                        <div className="text-[11px] text-[#78716C]">{cli.nome_fantasia}</div>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-[#57534E]">
-                      {formatCNPJ(cli.cnpj)}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <StatusBadge status="cliente_ativo" size="sm" />
-                    </td>
-                    <td className="py-3.5 px-4 font-medium text-[#1C1917]">
-                      {cli.gerente_conta_nome || "Diretoria Comercial"}
-                    </td>
-                    <td className="py-3.5 px-4 text-[#57534E]">
-                      {cli.volume_mensal_estimado || "—"}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleRemover(cli.id, cli.razao_social)}
-                        className="p-1 text-[#A8A29E] hover:text-red-600 rounded transition-colors"
-                        title="Remover da carteira"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((cli) => {
+                  const deact = activeTab === "ex_clientes" ? extractDeactivationInfo(cli) : null;
+                  const restrictive = deact ? isRestrictiveDeactivation(deact.reason) : false;
+
+                  return (
+                    <tr key={cli.id} className="hover:bg-[#FAFAF9] transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-serif font-bold text-sm text-[#1C1917]">
+                          {cli.razao_social}
+                        </div>
+                        {cli.nome_fantasia && (
+                          <div className="text-[11px] text-[#78716C]">{cli.nome_fantasia}</div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-[#57534E]">
+                        {formatCNPJ(cli.cnpj)}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <StatusBadge
+                          status={activeTab === "ativos" ? "cliente_ativo" : "ex_cliente"}
+                          size="sm"
+                        />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {activeTab === "ativos" ? (
+                          <span className="font-medium text-[#1C1917]">
+                            {cli.gerente_conta_nome || "Diretoria Comercial"}
+                          </span>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <span
+                              className={`font-semibold ${
+                                restrictive ? "text-red-700" : "text-[#1C1917]"
+                              }`}
+                            >
+                              {getDeactivationLabel(deact?.reason)}
+                            </span>
+                            {deact?.detail && (
+                              <p className="text-[11px] text-[#78716C] line-clamp-2">
+                                {deact.detail}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-[#57534E]">
+                        {activeTab === "ativos"
+                          ? cli.volume_mensal_estimado || "—"
+                          : deact?.date
+                          ? new Date(deact.date).toLocaleDateString("pt-BR")
+                          : "—"}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {isGestor ? (
+                          activeTab === "ativos" ? (
+                            <button
+                              type="button"
+                              onClick={() => openDeactivateModal(cli)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#78716C] hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                              title="Desativar cliente da carteira"
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                              Desativar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleReactivate(cli)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#047857] hover:bg-emerald-50 rounded transition-colors"
+                              title="Reativar cliente na carteira"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Reativar
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-[11px] text-[#A8A29E]">Somente Gestor</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* MODAL DESATIVAR CLIENTE ATIVO */}
+      {deactivatingClient && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg border border-[#E7E5E4] max-w-lg w-full p-6 shadow-floating space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 border-b border-[#E7E5E4] pb-3">
+              <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+              <div>
+                <h3 className="font-serif font-bold text-base text-[#1C1917]">
+                  Desativar Cliente da Carteira
+                </h3>
+                <p className="text-xs text-[#57534E]">
+                  {deactivatingClient.razao_social} ({formatCNPJ(deactivatingClient.cnpj)})
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmDeactivate} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                  Motivo da Desativação <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={deactivationReason}
+                  onChange={(e) => setDeactivationReason(e.target.value as DeactivationReason)}
+                  className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] text-xs bg-white focus-ring"
+                >
+                  {DEACTIVATION_REASONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} {opt.restrictive ? "(Restringe reprospecção)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {isRestrictiveDeactivation(deactivationReason) && (
+                  <p className="mt-1.5 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2.5 py-1.5">
+                    Este motivo bloqueará novas abordagens pelo time comercial; apenas um Gestor poderá autorizar reprospecção futura.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#57534E] mb-1">
+                  Observações / Detalhes {deactivationReason === "outro" && <span className="text-red-500">*</span>}
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Contexto do encerramento do contrato ou observações importantes..."
+                  value={deactivationDetail}
+                  onChange={(e) => setDeactivationDetail(e.target.value)}
+                  required={deactivationReason === "outro"}
+                  className="w-full px-3 py-2 rounded-md border border-[#D6D3D1] text-xs focus-ring"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E7E5E4]">
+                <button
+                  type="button"
+                  onClick={() => setDeactivatingClient(null)}
+                  className="px-4 py-2 border border-[#D6D3D1] rounded-md text-xs font-medium text-[#1C1917] hover:bg-[#F5F5F4]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDeactivating}
+                  className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-md text-xs font-semibold shadow-sm"
+                >
+                  {isDeactivating ? "Desativando..." : "Confirmar Desativação"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL NOVO CLIENTE ATIVO (US-05) */}
       {showModal && (

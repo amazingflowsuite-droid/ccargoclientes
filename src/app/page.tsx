@@ -6,6 +6,7 @@ import {
   fetchAllAccounts,
   updateAccount,
   fetchContactLogs,
+  fetchStageHistory,
   addContactLog,
   getCurrentOperator,
   getOperatorsList,
@@ -18,6 +19,7 @@ import {
   LeadStage,
   DisqualificationReason,
   ContactLog,
+  StageTransition,
   OperatorUser,
   AppUser,
 } from "@/types";
@@ -40,7 +42,6 @@ import {
   Truck,
   ShieldCheck,
   AlertOctagon,
-  UserPlus,
   Search,
   GripVertical,
   UserCheck,
@@ -65,6 +66,7 @@ export default function DashboardKanbanPage() {
   // Modal de Detalhes, Observações & Histórico de Contatos (US-07, US-10, US-11)
   const [selectedLead, setSelectedLead] = useState<Account | null>(null);
   const [leadLogs, setLeadLogs] = useState<ContactLog[]>([]);
+  const [leadTransitions, setLeadTransitions] = useState<StageTransition[]>([]);
   const [editObservacoes, setEditObservacoes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSavedSuccess, setNotesSavedSuccess] = useState(false);
@@ -144,8 +146,13 @@ export default function DashboardKanbanPage() {
     setSelectedLead(lead);
     setEditObservacoes(lead.observacoes_importantes || "");
     setNotesSavedSuccess(false);
-    const logs = await fetchContactLogs(lead.id);
+    setLeadTransitions(lead.stage_transitions || []);
+    const [logs, transitions] = await Promise.all([
+      fetchContactLogs(lead.id),
+      fetchStageHistory(lead.id),
+    ]);
     setLeadLogs(logs);
+    setLeadTransitions(transitions.length > 0 ? transitions : lead.stage_transitions || []);
   }
 
   async function handleSaveObservacoes() {
@@ -402,11 +409,12 @@ export default function DashboardKanbanPage() {
     }
 
     if (!searchFilter.trim()) return true;
-    const term = searchFilter.toLowerCase();
+    const term = searchFilter.trim().toLowerCase();
+    const numericTerm = cleanCNPJ(term);
     return (
       l.razao_social.toLowerCase().includes(term) ||
       (l.nome_fantasia && l.nome_fantasia.toLowerCase().includes(term)) ||
-      l.cnpj.includes(cleanCNPJ(term)) ||
+      (numericTerm.length > 0 && cleanCNPJ(l.cnpj).includes(numericTerm)) ||
       (l.cidade && l.cidade.toLowerCase().includes(term))
     );
   });
@@ -471,11 +479,11 @@ export default function DashboardKanbanPage() {
 
         {/* Barra de Busca, Filtro de Operadora e Botões de Ação */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 sm:w-64 min-w-[200px]">
+          <div className="relative flex-1 sm:w-72 min-w-[230px]">
             <Search className="w-3.5 h-3.5 text-[#78716C] absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar cliente (ex: Tauste), CNPJ ou cidade..."
+              placeholder="Buscar cliente, CNPJ ou cidade..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 rounded-md border border-[#D6D3D1] bg-[#FAFAF9] focus:bg-white text-xs focus-ring"
@@ -509,14 +517,6 @@ export default function DashboardKanbanPage() {
               <span>Relatórios</span>
             </Link>
           )}
-
-          <Link
-            href="/novo-lead"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold rounded-md shadow-sm transition-all focus-ring"
-          >
-            <UserPlus className="w-3.5 h-3.5 text-[#0D9488]" />
-            <span>Nova Prospecção</span>
-          </Link>
         </div>
       </div>
 
@@ -615,6 +615,7 @@ export default function DashboardKanbanPage() {
         <LeadDetailsModal
           selectedLead={selectedLead}
           leadLogs={leadLogs}
+          stageTransitions={leadTransitions}
           editObservacoes={editObservacoes}
           setEditObservacoes={setEditObservacoes}
           isSavingNotes={isSavingNotes}

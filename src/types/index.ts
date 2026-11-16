@@ -8,6 +8,14 @@ export type DisqualificationReason =
   | 'tabela_abaixo_piso'
   | 'outro';
 
+export type DeactivationReason =
+  | 'fim_contrato'
+  | 'quebra_contrato'
+  | 'inadimplencia'
+  | 'migracao_concorrente'
+  | 'encerramento_operacao'
+  | 'outro';
+
 export type LeadStage = 
   | 'prospeccao_inicial'
   | 'qualificacao_logistica'
@@ -84,6 +92,11 @@ export interface Account {
   motivo_desqualificacao?: DisqualificationReason;
   detalhe_desqualificacao?: string;
   data_desqualificacao?: string;
+
+  // Desativação de Cliente Ativo (Ex-Cliente)
+  motivo_desativacao?: DeactivationReason;
+  detalhe_desativacao?: string;
+  data_desativacao?: string;
   
   // Responsáveis
   gerente_conta_nome?: string; // Se for cliente ativo
@@ -91,10 +104,23 @@ export interface Account {
   
   // Métricas de Workflow (Lead Time & Cycle Time - US-18)
   stage_history?: Partial<Record<LeadStage, string>>;
+  stage_transitions?: StageTransition[];
   fechado_em?: string;
   
   created_at: string;
   updated_at: string;
+}
+
+export interface StageTransition {
+  id: string;
+  account_id: string;
+  from_stage?: LeadStage | null;
+  to_stage: LeadStage;
+  from_status?: AccountStatus | null;
+  to_status: AccountStatus;
+  usuario_nome: string;
+  motivo?: string | null;
+  created_at: string;
 }
 
 export interface ContactLog {

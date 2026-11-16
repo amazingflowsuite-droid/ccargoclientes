@@ -6,6 +6,7 @@ import {
   LeadStage,
   OperatorUser,
   PasswordStatus,
+  StageTransition,
   UserRole,
 } from "@/types";
 import { cleanCNPJ, formatCNPJ, getCNPJRaiz } from "./utils";
@@ -961,7 +962,11 @@ function mergeWithOverlay(accounts: Account[]): Account[] {
     const clean = cleanCNPJ(acc.cnpj);
     const overlayNote = overlay[acc.id] ?? overlay[clean];
     const overlayOrder = orderOverlay[acc.id] ?? orderOverlay[clean];
-    const customStages = stageOverlay[acc.id] || stageOverlay[clean] || {};
+    const hasServerStageData =
+      acc.stage_transitions !== undefined || acc.stage_history !== undefined;
+    const customStages = hasServerStageData
+      ? {}
+      : stageOverlay[acc.id] || stageOverlay[clean] || {};
     const baseStages = acc.stage_history || buildSynthesizedStageHistory(acc);
 
     const mergedHistory = {
@@ -1188,7 +1193,12 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
   }
 
   if (shouldUseServerApi() && !id.startsWith("acc-")) {
-    const { stage_history: _sh, fechado_em: _fe, ...dbUpdates } = updates;
+    const {
+      stage_history: _sh,
+      stage_transitions: _st,
+      fechado_em: _fe,
+      ...dbUpdates
+    } = updates;
     const res = await apiRequest<{ data?: Account | null; error?: string }>("/api/accounts", {
       method: "PATCH",
       body: JSON.stringify({ id, updates: dbUpdates }),
@@ -1201,7 +1211,7 @@ export async function updateAccount(id: string, updates: Partial<Account>): Prom
 
   if (isSupabaseConfigured && supabase && !id.startsWith("acc-")) {
     try {
-      const { stage_history, fechado_em, ...dbUpdates } = updates;
+      const { stage_history, stage_transitions, fechado_em, ...dbUpdates } = updates;
       const { data, error } = await supabase
         .from("accounts")
         .update(dbUpdates)
@@ -1324,6 +1334,20 @@ export async function fetchAllContactLogs(): Promise<ContactLog[]> {
 export async function fetchContactLogs(accountId: string): Promise<ContactLog[]> {
   const all = await fetchAllContactLogs();
   return all.filter((l) => l.account_id === accountId);
+}
+
+export async function fetchStageHistory(accountId: string): Promise<StageTransition[]> {
+  if (shouldUseServerApi() && !accountId.startsWith("acc-")) {
+    const res = await apiRequest<{ data?: StageTransition[]; error?: string }>(
+      `/api/stage-history?accountId=${encodeURIComponent(accountId)}`
+    );
+    if (!res.ok) {
+      throw new Error(res.data.error || "Erro ao carregar histórico de movimentações.");
+    }
+    return res.data.data || [];
+  }
+
+  return [];
 }
 
 export async function addContactLog(
